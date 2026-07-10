@@ -1,0 +1,54 @@
+[project]
+name = "gds-idea-pkg-ai-reviewer"
+description = "AI-powered code review agent using AWS Bedrock Claude and GitHub MCP Server"
+readme = "README.md"
+authors = [
+    { name = "Jose Orjales", email = "201837803+JOrjales-gds@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic-ai>=1.0.11",
+    "pydantic-ai-slim[mcp]>=1.0.11",
+    "boto3>=1.40.41",
+]
+dynamic = ["version"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.0",
+    "ruff>=0.14.0",
+    "pre-commit",
+]
+cdk = [
+    "aws-cdk-lib>=2.180.0",
+    "constructs>=10.0.0",
+]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/ai_reviewer/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_reviewer"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+exclude = ["src/ai_reviewer/_version.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_reviewer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = ["integration: tests that require external services"]
