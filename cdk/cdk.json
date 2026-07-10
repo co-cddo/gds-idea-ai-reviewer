@@ -1,0 +1,20 @@
+{
+  "app": "python3 app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/__pycache__",
+      "**/.venv"
+    ]
+  },
+  "context": {
+    "phase": "dev",
+    "account_number": "992382722318",
+    "region": "eu-west-2",
+    "github_org": "co-cddo",
+    "role_name": "ai-reviewer-role",
+    "bedrock_model_id": "anthropic.claude-sonnet-4-6"
+  }
+}
