@@ -1,0 +1,61 @@
+name: "GDS IDEA AI Code Reviewer"
+description: "AI-powered code review using AWS Bedrock Claude via GitHub MCP Server"
+author: "GDS IDEA Team"
+
+inputs:
+  github-token:
+    description: "GitHub token for PR access and MCP server authentication"
+    required: true
+  aws-role-arn:
+    description: "ARN of the IAM role for Bedrock access (assumed via OIDC)"
+    required: true
+  aws-region:
+    description: "AWS region for Bedrock API calls"
+    required: false
+    default: "eu-west-2"
+  model-id:
+    description: "AWS Bedrock model ID to use for code review"
+    required: false
+    default: "anthropic.claude-sonnet-4-6"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout action repository
+      uses: actions/checkout@v5
+      with:
+        repository: co-cddo/gds-idea-ai-reviewer
+        path: .ai-reviewer
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        version: "latest"
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ inputs.aws-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ai-reviewer-${{ github.event.repository.name }}
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --frozen
+      working-directory: .ai-reviewer
+
+    - name: Run AI code review
+      shell: bash
+      working-directory: .ai-reviewer
+      run: uv run python -m ai_reviewer.run
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MODEL_ID: ${{ inputs.model-id }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
