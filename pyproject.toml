@@ -7,21 +7,21 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic-ai>=1.0.11",
+    "pydantic-ai>=2.13.0",
     "pydantic-ai-slim[mcp]>=1.0.11",
-    "boto3>=1.40.41",
+    "boto3>=1.43.51",
 ]
 dynamic = ["version"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.0",
-    "ruff>=0.14.0",
+    "ruff>=0.15.22",
     "pre-commit",
 ]
 cdk = [
     "aws-cdk-lib>=2.180.0",
-    "constructs>=10.0.0",
+    "constructs>=10.7.1",
 ]
 
 [build-system]
