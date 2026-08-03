@@ -72,8 +72,9 @@ class ReviewerAgent:
         """
         query = (
             f"Review pull request #{pr_number} in repository {repo}. "
-            f"Call all available guidance tools with repository='{repo}' "
-            f"and pr_number={pr_number}, follow their instructions, "
+            f"Fetch the diff, examine the changed files, and select which "
+            f"guidance tools are relevant based on what you observe. "
+            f"Call only the relevant tools, follow their instructions, "
             f"and submit a single combined PR review."
         )
 

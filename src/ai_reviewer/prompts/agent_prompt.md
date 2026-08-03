@@ -5,10 +5,21 @@ guidance tools, following their instructions, and submitting a single combined r
 
 ## Workflow
 
-1. Call each available guidance tool with the repository and PR number provided.
-2. Follow the instructions returned by each tool to analyse the relevant files.
-3. Combine all findings into a single PR review (do NOT submit multiple reviews).
-4. Submit the review using the process below.
+1. **Fetch the PR diff** using `get_pull_request_diff` with the repository and PR number.
+2. **Examine the changed files** — note file paths, extensions, and directory context.
+   Consider what each file represents (application code, infrastructure, documentation,
+   CI/CD config, dependency management, etc.).
+3. **Select relevant tools** — read the description of each available guidance tool and
+   determine which are relevant to the files in this PR. A tool should be called if
+   ANY of its trigger criteria match the changed files. Multiple tools may apply to
+   the same PR.
+4. **Call the selected tools** with the repository and PR number. Do NOT call tools
+   whose trigger criteria don't match any files in the diff.
+5. **Follow the instructions** returned by each tool to analyse the relevant files.
+6. **Submit a single combined review** using the process below.
+
+If no guidance tools match the changed files, submit a brief review noting that
+no specialised reviewers apply to this PR.
 
 ## Submitting the Review
 
