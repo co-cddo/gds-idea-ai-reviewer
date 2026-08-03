@@ -12,8 +12,10 @@ Consuming Repo (PR with 'ai-review' label)
     ▼
 Workflows Catalogue (ci_ai_review.yml)
     │
+    ├── GitHub App Token (gds-idea-ai-reviewer)
+    │       └── Authenticates access to repos
     ▼
-This Action (action.yml)
+This Repo (checked out by workflow)
     ├── GitHub MCP Server (Docker container)
     │       └── Fetches PR diff, posts review comments
     └── Pydantic AI Agent (Bedrock Claude)
@@ -21,10 +23,11 @@ This Action (action.yml)
 ```
 
 1. A developer adds the `ai-review` label to a PR
-2. The reusable workflow in the catalogue triggers this action
-3. The action starts the GitHub MCP Server (Docker) and the Pydantic AI agent
-4. The agent fetches the PR diff, reviews it against quality criteria, and
-   submits a PR review with `COMMENT` event (advisory, non-blocking)
+2. The reusable workflow in the catalogue generates a GitHub App installation token
+3. The workflow checks out this repo and starts the Pydantic AI agent
+4. The agent uses the GitHub MCP Server to fetch the PR diff, reviews it against
+   quality criteria, and submits a PR review as **gds-idea-ai-reviewer[bot]**
+   with `COMMENT` event (advisory, non-blocking)
 
 ## Usage (Consuming Repos)
 
@@ -36,6 +39,11 @@ on:
   pull_request:
     types: [opened, synchronize, labeled]
 
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
 jobs:
   ai-review:
     uses: co-cddo/gds-idea-workflows-catalogue/.github/workflows/ci_ai_review.yml@main
@@ -44,13 +52,14 @@ jobs:
 
 Then add the `ai-review` label to any PR to trigger a review.
 
+> **Note:** The `gds-idea-ai-reviewer` GitHub App must be installed on your repo
+> for this to work. See [GitHub App Setup](#github-app-setup) below.
+
 The `ai-review` label needs to exist in your repository. Create it once via the
-GitHub UI (Issues > Labels > New label) or via the API:
+GitHub UI (Issues > Labels > New label) or via the CLI:
 
 ```bash
-curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
-  "https://api.github.com/repos/YOUR_ORG/YOUR_REPO/labels" \
-  -d '{"name":"ai-review","color":"7057ff","description":"Trigger AI code review"}'
+gh label create "ai-review" --description "Trigger AI code review" --color "7057ff"
 ```
 
 Alternatively, GitHub auto-creates labels when you apply them to a PR for the
@@ -63,10 +72,82 @@ For early testing (before merge to main in the catalogue):
     uses: co-cddo/gds-idea-workflows-catalogue/.github/workflows/ci_ai_review.yml@ai_reviewer
 ```
 
+## GitHub App Setup
+
+The reviewer authenticates via the
+[gds-idea-ai-reviewer](https://github.com/organizations/co-cddo/settings/apps/gds-idea-ai-reviewer)
+GitHub App. The app controls which repos the reviewer can access — installing or
+uninstalling it on a repo grants or revokes access.
+
+### App Permissions
+
+| Permission | Access |
+|------------|--------|
+| Contents | Read & Write |
+| Pull requests | Read & Write |
+
+### Installation
+
+The app must be installed on:
+
+- **This repo** (`co-cddo/gds-idea-ai-reviewer`) — so the workflow can check out
+  the reviewer code
+- **Each consuming repo** — so the reviewer can read PR diffs and post reviews
+
+To manage installations:
+https://github.com/organizations/co-cddo/settings/installations
+
+### Org Secrets
+
+> **Note:** Org admin access is required to create org-level secrets and manage
+> app installations across repos.
+
+The following secrets must be set at the org level
+(`https://github.com/organizations/co-cddo/settings/secrets/actions`):
+
+| Secret | Value |
+|--------|-------|
+| `GDS_IDEA_AI_REVIEWER_APP_ID` | The App's **Client ID** (e.g. `Iv23...`) |
+| `GDS_IDEA_AI_REVIEWER_APP_PRIVATE_KEY` | Private key in **PKCS#8** format |
+
+Repository access on the secrets must include all repos that use the reviewer.
+
+### Private Key Format
+
+GitHub generates private keys in PKCS#1 format (`-----BEGIN RSA PRIVATE KEY-----`).
+The `actions/create-github-app-token@v3` action requires PKCS#8 format. Convert with:
+
+```bash
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt \
+  -in your-key.pem \
+  -out your-key-pkcs8.pem
+```
+
+The converted key starts with `-----BEGIN PRIVATE KEY-----`. Use the full
+contents of the PKCS#8 file (including header and footer lines) as the secret value.
+
+To set the secret via CLI (avoids copy-paste issues):
+
+```bash
+gh secret set GDS_IDEA_AI_REVIEWER_APP_PRIVATE_KEY \
+  --org co-cddo \
+  --visibility all \
+  < your-key-pkcs8.pem
+```
+
+### Reviewer Identity
+
+Reviews appear as **gds-idea-ai-reviewer[bot]** with the app's avatar, giving
+a distinct branded identity separate from `github-actions[bot]`.
+
 ## Cost Control
 
 The review **only runs when the PR has the `ai-review` label**. No label = no
 run = no cost. This is enforced in the reusable workflow's `if:` condition.
+
+Additionally, the GitHub App must be installed on the repo — repos without the
+app installed cannot trigger the reviewer even if the workflow and label are
+present.
 
 ## What Gets Reviewed
 
@@ -97,15 +178,6 @@ The following are always skipped: `.lock`, `.csv`, images, fonts,
 
 ## Configuration
 
-### Action Inputs
-
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `github-token` | Yes | - | GitHub token for PR access and MCP server |
-| `aws-role-arn` | Yes | - | IAM role ARN for Bedrock (assumed via OIDC) |
-| `aws-region` | No | `eu-west-2` | AWS region for Bedrock API |
-| `model-id` | No | `anthropic.claude-sonnet-4-6` | Bedrock model ID |
-
 ### Workflow Inputs (catalogue)
 
 | Input | Default | Description |
@@ -114,6 +186,39 @@ The following are always skipped: `.lock`, `.csv`, images, fonts,
 | `aws_role_name` | `ai-reviewer-role` | IAM role name for OIDC |
 | `model_id` | `anthropic.claude-sonnet-4-6` | Bedrock model ID |
 | `aws_region` | `eu-west-2` | AWS region |
+
+## Future Enhancements
+
+### Cost Tracking & Attribution
+
+- CloudWatch dashboard for Bedrock token usage and invocation counts
+- Per-repo cost attribution using custom CloudWatch metrics (track which repos
+  generate the most review cost)
+- AWS Budget alerts when spend exceeds thresholds
+
+### Specialised Review Tools
+
+The current reviewer uses general-purpose code and documentation review tools.
+Future work will introduce **specialised tools for different PR types**:
+
+- **CDK apps** — CloudFormation best practices, IAM least-privilege, resource
+  tagging, construct patterns
+- **Python packages** — packaging standards, dependency hygiene, type hints,
+  test coverage patterns
+- **Documentation** — structure, accuracy against code, completeness, style
+- **Web apps using gds-idea-app-kit** — component usage, accessibility,
+  GDS design system compliance
+
+### Crowdsourced Review Criteria
+
+Each specialised tool will reference a dedicated README containing its review
+criteria. These READMEs serve as the single source of truth for what the agent
+checks, and can be synced to Confluence for easier reading and contribution
+across teams.
+
+This allows the wider team to contribute review rules without modifying the
+agent code — update the relevant README and the agent picks up the new criteria
+on its next run.
 
 ## Local Testing
 

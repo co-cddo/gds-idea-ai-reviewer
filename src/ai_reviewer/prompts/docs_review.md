@@ -1,32 +1,4 @@
-"""Documentation review guidance tool for the AI reviewer agent.
-
-Reviews README/markdown files and docstrings in Python code. Focuses on
-documentation quality, completeness, and accuracy against the actual codebase.
-
-Inspired by the readme_analysis_tool pattern in gds-idea-mcp, adapted to
-work as a PR review tool that posts inline comments.
-"""
-
-from pydantic_ai import RunContext
-
-
-def docs_review_tool(agent_instance):
-    """Register the documentation review guidance tool on the agent."""
-
-    @agent_instance.tool
-    def docs_review_guidance(ctx: RunContext, repository: str, pr_number: int) -> str:
-        """
-        Get detailed instructions for reviewing documentation in a pull request.
-
-        Reviews README/markdown files for quality and completeness, and checks
-        that Python docstrings are present and accurate.
-
-        Args:
-            repository: Repository in 'owner/repo' format.
-            pr_number: Pull request number to review.
-        """
-
-        return f"""# Documentation Review Instructions
+# Documentation Review Instructions
 
 ## Target
 - Repository: {repository}
@@ -78,7 +50,7 @@ If the PR changes code behaviour, check whether the README was updated to match.
 - Is the writing clear and concise?
 - Are technical terms explained where needed?
 - Is formatting consistent (heading levels, code blocks, lists)?
-- Are code blocks properly fenced with language identifiers (```python, ```bash)?
+- Are code blocks properly fenced with language identifiers?
 - Is there unnecessary duplication?
 - Are links formatted correctly?
 
@@ -131,61 +103,23 @@ For docstrings that exist, check:
 ### Example Comments
 
 For a function missing a docstring:
-```
-Docs: This public function is missing a docstring. Consider:
 
-    \"\"\"Fetch and validate the user configuration.
-
-    Args:
-        config_path: Path to the configuration file.
-        strict: If True, raise on unknown keys.
-
-    Returns:
-        Validated configuration dictionary.
-
-    Raises:
-        FileNotFoundError: If config_path does not exist.
-    \"\"\"
-```
+    Docs: This public function is missing a docstring. Consider adding one
+    documenting its purpose, arguments, return value, and any exceptions.
 
 For a README not updated after a code change:
-```
-Docs: This PR adds the `--dry-run` flag to the CLI but the Usage section
-of the README hasn't been updated to mention it.
-```
+
+    Docs: This PR adds the `--dry-run` flag to the CLI but the Usage section
+    of the README hasn't been updated to mention it.
 
 For a README with incorrect code example:
-```
-Docs: The example shows `from package import old_function` but this was
-renamed to `new_function` in this PR.
-```
+
+    Docs: The example shows `from package import old_function` but this was
+    renamed to `new_function` in this PR.
 
 For markdown formatting:
-```
-Nit: This code block should specify the language for syntax highlighting:
-    ```python
-    instead of just ```
-```
 
-## Step 5: Include in PR Review
-
-Add documentation comments to the SAME PR review as the code review — do NOT
-submit a separate review. Include docs inline comments in the `comments` array
-alongside code review comments.
-
-In the review summary body, include ALL documentation findings under the
-"### Documentation" heading. List each finding with the file and a brief description,
-for example:
-
-```
-### Documentation
-5. **`README.md`** — Code examples reference wrong function names
-6. **`README.md`** — Filler text should be removed
-7. **`utils.py`** — 4 public functions missing docstrings
-```
-
-This ensures the full review body (from the code_review_guidance template) contains
-a complete picture of ALL findings — code, config, AND documentation — in one place.
+    Nit: This code block should specify the language for syntax highlighting.
 
 ## Important Notes
 
@@ -197,4 +131,3 @@ a complete picture of ALL findings — code, config, AND documentation — in on
   review found nothing to flag — that's fine
 - NEVER suggest adding documentation for its own sake — only flag genuine gaps
   that would cause confusion or friction
-"""

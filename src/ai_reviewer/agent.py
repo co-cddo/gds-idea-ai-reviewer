@@ -1,12 +1,13 @@
 """AI Reviewer Agent - orchestrates code review using Bedrock and GitHub MCP."""
 
+from importlib.resources import files
+
 from pydantic_ai import Agent
 from pydantic_ai.models.bedrock import BedrockConverseModel
 from pydantic_ai.providers.bedrock import BedrockProvider
 
-from ai_reviewer.code_review_tool import code_review_tool
-from ai_reviewer.docs_review_tool import docs_review_tool
 from ai_reviewer.github_server import get_github_server
+from ai_reviewer.tools import get_all_toolsets
 
 
 class ReviewerAgent:
@@ -17,9 +18,8 @@ class ReviewerAgent:
     Bedrock for inference. Designed to run in GitHub Actions with OIDC
     authentication (default credential chain) or locally with an AWS profile.
 
-    Registers two guidance tools:
-    - code_review_guidance: Reviews source code, config files, workflows
-    - docs_review_guidance: Reviews README/markdown files and Python docstrings
+    Review tools are auto-discovered from the ai_reviewer.tools package.
+    To add a new tool, create a prompt in prompts/ and a module in tools/.
 
     Args:
         github_token: GitHub token for MCP server and PR access.
@@ -46,15 +46,15 @@ class ReviewerAgent:
         # Setup GitHub MCP server (Docker-based)
         self.github_server = get_github_server(github_token)
 
-        # Create agent with GitHub toolset
+        # Load agent-level instructions (submission template, combination logic)
+        agent_instructions = files("ai_reviewer.prompts").joinpath("agent_prompt.md").read_text()
+
+        # Create agent with GitHub MCP + all discovered review toolsets
         self.agent = Agent(
             BedrockConverseModel(model_id, provider=self.bedrock_provider),
-            toolsets=[self.github_server],
+            instructions=agent_instructions,
+            toolsets=[self.github_server, *get_all_toolsets()],
         )
-
-        # Register guidance tools
-        code_review_tool(self.agent)
-        docs_review_tool(self.agent)
 
     async def review(self, repo: str, pr_number: int) -> str:
         """
@@ -72,11 +72,9 @@ class ReviewerAgent:
         """
         query = (
             f"Review pull request #{pr_number} in repository {repo}. "
-            f"Use the code_review_guidance tool with repository='{repo}' "
-            f"and pr_number={pr_number} to get review instructions for source code and config files. "
-            f"Also use the docs_review_guidance tool with the same arguments to get instructions "
-            f"for reviewing documentation (markdown files and Python docstrings). "
-            f"Follow both sets of instructions and submit a single combined PR review."
+            f"Call all available guidance tools with repository='{repo}' "
+            f"and pr_number={pr_number}, follow their instructions, "
+            f"and submit a single combined PR review."
         )
 
         async with self.agent:
