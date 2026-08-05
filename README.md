@@ -151,25 +151,15 @@ present.
 
 ## What Gets Reviewed
 
-The agent uses two review tools:
+The agent inspects the PR diff first and selects only the review tools relevant
+to the changed files. Each tool declares trigger criteria in its description —
+the agent reads these and decides which to call based on what it observes in the
+diff. A PR with only documentation changes won't trigger the code reviewer, and
+vice versa.
 
-### Code Review (`code_review_guidance`)
-
-Reviews source code and configuration files:
-- **Source code:** `.py`, `.sql`, `.html`, `.jinja2`, `.j2`, `.css`, `.js`, `.ts`, `.tsx`, `.jsx`
-- **Config files:** `.yaml`, `.yml`, `.json`, `.toml`
-
-Criteria: bugs, security, code quality, architecture, testing, and
-language/format-specific checks (including GitHub Actions workflow best practices).
-
-### Documentation Review (`docs_review_guidance`)
-
-Reviews documentation quality and completeness:
-- **Markdown files:** `.md`, `.rst` — structure, accuracy against code, completeness
-- **Python docstrings:** checks public functions/classes have accurate docstrings
-
-Criteria: README structure, accuracy vs actual code, missing docs for new features,
-docstring presence and quality on public APIs.
+Tools live in `src/ai_reviewer/tools/` and their prompts in `src/ai_reviewer/prompts/`.
+See [Adding a New Review Tool](AGENTS.md#adding-a-new-review-tool) for how to
+extend the suite without touching the agent core.
 
 ### Skipped Files
 
@@ -198,16 +188,17 @@ The following are always skipped: `.lock`, `.csv`, images, fonts,
 
 ### Specialised Review Tools
 
-The current reviewer uses general-purpose code and documentation review tools.
-Future work will introduce **specialised tools for different PR types**:
+The architecture for specialised, diff-aware tools is in place. Planned additions:
 
 - **CDK apps** — CloudFormation best practices, IAM least-privilege, resource
   tagging, construct patterns
 - **Python packages** — packaging standards, dependency hygiene, type hints,
   test coverage patterns
-- **Documentation** — structure, accuracy against code, completeness, style
 - **Web apps using gds-idea-app-kit** — component usage, accessibility,
   GDS design system compliance
+
+Each tool is a single `.py` file + a `.md` prompt. The agent automatically
+discovers new tools and selects them based on what files changed in the PR.
 
 ### Crowdsourced Review Criteria
 
