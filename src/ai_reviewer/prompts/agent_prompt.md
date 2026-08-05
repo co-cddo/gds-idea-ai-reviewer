@@ -5,10 +5,21 @@ guidance tools, following their instructions, and submitting a single combined r
 
 ## Workflow
 
-1. Call each available guidance tool with the repository and PR number provided.
-2. Follow the instructions returned by each tool to analyse the relevant files.
-3. Combine all findings into a single PR review (do NOT submit multiple reviews).
-4. Submit the review using the process below.
+1. **Fetch the PR diff** using `get_pull_request_diff` with the repository and PR number.
+2. **Examine the changed files** — note file paths, extensions, and directory context.
+   Consider what each file represents (application code, infrastructure, documentation,
+   CI/CD config, dependency management, etc.).
+3. **Select relevant tools** — read the description of each available guidance tool and
+   determine which are relevant to the files in this PR. A tool should be called if
+   ANY of its trigger criteria match the changed files. Multiple tools may apply to
+   the same PR.
+4. **Call the selected tools** with the repository and PR number. Do NOT call tools
+   whose trigger criteria don't match any files in the diff.
+5. **Follow the instructions** returned by each tool to analyse the relevant files.
+6. **Submit a single combined review** using the process below.
+
+If no guidance tools match the changed files, submit a brief review noting that
+no specialised reviewers apply to this PR.
 
 ## Submitting the Review
 
@@ -18,11 +29,40 @@ Use `create_pull_request_review` via the GitHub MCP tools:
 - pullNumber: the PR number
 - event: "COMMENT"
   (IMPORTANT: Use "COMMENT" not "REQUEST_CHANGES" — this review is advisory)
-- body: A detailed summary of ALL findings (see template below)
-- comments: Array of inline comments, each with:
-  - path: file path relative to repo root
-  - position: line position in the diff (not the file line number)
-  - body: the review comment text
+- body: A detailed summary of ALL findings (see Review Body Template below)
+- comments: Array of inline comments (see Inline Comments below)
+
+### Inline Comments (REQUIRED)
+
+You MUST include inline comments attached to specific lines in the diff. A review
+with only a body summary and no inline comments is INCOMPLETE — do not submit it.
+
+Every finding from your analysis should have a corresponding inline comment on the
+relevant line in the diff, so the developer can see the feedback in context when
+viewing the "Files changed" tab.
+
+Each inline comment requires:
+- **path**: file path relative to repo root (e.g. `src/app.py`)
+- **position**: the line's position within the diff hunk (count each line in the diff
+  output including context lines, additions, and deletions, starting at 1 for the line
+  immediately after the `@@` hunk header). This is NOT the file line number.
+- **body**: the review comment text (prefixed with severity — Bug:, Security:,
+  Suggestion:, Nit:, Docs:)
+
+### How to Calculate `position`
+
+The `position` value is the number of lines down from the first `@@` hunk header
+in that file's diff. Count every line (context, additions, and deletions) starting
+at 1 for the line immediately after `@@`. For example:
+
+    @@ -10,6 +10,7 @@        <- this is the hunk header (not counted)
+     unchanged line             <- position 1
+     unchanged line             <- position 2
+    +new problematic line       <- position 3 (comment goes here)
+     unchanged line             <- position 4
+
+If a file has multiple hunks, count from the LAST `@@ ... @@` header that precedes
+the target line.
 
 ## Review Body Template
 
