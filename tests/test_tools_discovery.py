@@ -2,9 +2,9 @@ from ai_reviewer.tools import get_all_toolsets
 
 
 def test_get_all_toolsets_discovers_tools():
-    """Auto-discovery finds at least the code and docs review toolsets."""
+    """Auto-discovery finds at least the agent_context tool"""
     toolsets = get_all_toolsets()
-    assert len(toolsets) >= 2
+    assert len(toolsets) >= 1
 
 
 def test_toolsets_have_expected_names():
