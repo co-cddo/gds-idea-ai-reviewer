@@ -1,10 +1,10 @@
-"""Project context guidance tool — called unconditionally on every PR."""
+"""Project context tool — called unconditionally on every PR."""
 
 from ai_reviewer.tools._tool_template import make_review_tool
 
 toolset = make_review_tool(
-    name="agent_guidance",
-    prompt_file="agent_guidance.md",
+    name="agent_context",
+    prompt_file="agent_context.md",
     description=(
         "Get instructions for building a concise understanding of this "
         "repository's structure, conventions, and build/test commands. "
