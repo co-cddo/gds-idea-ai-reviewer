@@ -27,46 +27,18 @@ no specialised reviewers apply to this PR.
 
 ## Submitting the Review
 
-Use `create_pull_request_review` via the GitHub MCP tools:
+Use `pull_request_review_write` via the GitHub MCP tools to submit a single,
+body-only review (no inline comments):
 - owner: the owner part of the repository (before the "/")
 - repo: the repo part of the repository (after the "/")
 - pullNumber: the PR number
 - event: "COMMENT"
   (IMPORTANT: Use "COMMENT" not "REQUEST_CHANGES" — this review is advisory)
 - body: A detailed summary of ALL findings (see Review Body Template below)
-- comments: Array of inline comments (see Inline Comments below)
 
-### Inline Comments (REQUIRED)
-
-You MUST include inline comments attached to specific lines in the diff. A review
-with only a body summary and no inline comments is INCOMPLETE — do not submit it.
-
-Every finding from your analysis should have a corresponding inline comment on the
-relevant line in the diff, so the developer can see the feedback in context when
-viewing the "Files changed" tab.
-
-Each inline comment requires:
-- **path**: file path relative to repo root (e.g. `src/app.py`)
-- **position**: the line's position within the diff hunk (count each line in the diff
-  output including context lines, additions, and deletions, starting at 1 for the line
-  immediately after the `@@` hunk header). This is NOT the file line number.
-- **body**: the review comment text (prefixed with severity — Bug:, Security:,
-  Suggestion:, Nit:, Docs:)
-
-### How to Calculate `position`
-
-The `position` value is the number of lines down from the first `@@` hunk header
-in that file's diff. Count every line (context, additions, and deletions) starting
-at 1 for the line immediately after `@@`. For example:
-
-    @@ -10,6 +10,7 @@        <- this is the hunk header (not counted)
-     unchanged line             <- position 1
-     unchanged line             <- position 2
-    +new problematic line       <- position 3 (comment goes here)
-     unchanged line             <- position 4
-
-If a file has multiple hunks, count from the LAST `@@ ... @@` header that precedes
-the target line.
+Submit ONE consolidated review with all findings in the body — do not attach
+inline/line-level comments. A single summary is easier to scan, collapse, and
+dismiss once addressed than a scattering of individual line comments.
 
 ## Review Body Template
 
@@ -99,7 +71,7 @@ Use this structure:
 ---
 *This is an automated review by the GDS IDEA AI Reviewer. Comments are advisory.*
 
-Include ALL findings in this body, even if they also have inline comments.
+Include ALL findings in this body — this is the only place they will appear.
 Omit empty sections (e.g. if there are no nits, skip that heading).
 
 ## Edge Cases
