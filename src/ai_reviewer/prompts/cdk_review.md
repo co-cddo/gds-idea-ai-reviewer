@@ -218,6 +218,45 @@ tests/
   defined in a stack, and keeps each Lambda self-contained and buildable in
   isolation.
 
+### Use structured logging in Lambda handlers, not print()
+
+- Lambda handler code must use Python's `logging` module instead of
+  `print()` statements.
+- Each handler should include at least one or two logging statements that
+  track what's happening during execution (e.g. receiving an event, a key
+  decision point, completion) — the exact number and placement beyond that
+  minimum is left to the author's judgement.
+- This applies to Lambda handler code only. `print()` statements are
+  acceptable in CDK stack/infrastructure code for surfacing debugging output
+  during synth/deploy (see Anti-Patterns).
+- `print()` output is unstructured and harder to filter/query in CloudWatch
+  Logs Insights; `logging` supports log levels and integrates automatically
+  with CloudWatch once deployed.
+
+**Bad:**
+```python
+def handler(event, context):
+    print(f"Processing event: {{json.dumps(event)}}")
+    result = process(event)
+    print(f"Result: {{result}}")
+    return result
+```
+
+**Good:**
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def handler(event, context):
+    logger.info("Received event with %d records", len(event.get("Records", [])))
+    result = process(event)
+    logger.info("Processing complete")
+    return result
+```
+
 ## 4. IAM Permissions
 
 ### Use .grant_*() methods over manual PolicyStatements
@@ -557,12 +596,13 @@ def test_table_is_destroyed_in_dev(dev_template):
 - **Live AWS API calls at synth time** (boto3 calls in `app.py` that make
   `cdk synth` dependent on credentials/network)
 - **Unresolved merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`)
-- **`print()` statements** in stack code (should use `logging` or be removed)
 - **`cdk.out/` committed to git** (should be in `.gitignore`)
 - **No `.add_dependency()` calls** between stacks that have cross-stack
   references
 - **Application code mixed into root level** instead of `app_src/` or `lambda/`
 - **Lambda source not in its own subfolder** under `lambda/`
+- **`print()` statements in Lambda handler code** — must use `logging`
+  instead (see Directory Layout for the full standard)
 - **Template-managed workflow files modified locally**
   (`.github/workflows/ci_cd_cdk_app.yml`, `ci_pr_cdk_app.yml` are managed by
   `gds-idea-app-kit` and must not be edited directly)
@@ -575,3 +615,7 @@ def test_table_is_destroyed_in_dev(dev_template):
 - Choices that are valid but different from a personal preference (e.g.
   separate accounts per environment vs. shared account with phase suffix —
   both are valid)
+- **`print()` statements in stack/infrastructure code** (`app.py`,
+  `stacks/**/*.py`) — these are acceptable for surfacing synth/deploy-time
+  debugging output in the terminal; only Lambda handler code requires
+  `logging`
