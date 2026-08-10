@@ -297,6 +297,13 @@ role.add_to_policy(iam.PolicyStatement(
 - When IAM logic lives in `app.py`, it becomes a dumping ground that grows
   indefinitely, mixes permission concerns with stack orchestration, and makes
   it hard to find where a role's permissions are defined.
+- Moving raw `PolicyStatement` blocks out of `app.py` into a standalone
+  file is only half the improvement. A 100-line file of ungrouped policy
+  statements is still hard to audit and reuse. Shared IAM helpers must be
+  named functions that describe their intent (e.g. `grant_bedrock_invoke()`,
+  `grant_read_athena()`) — each taking a `grantee` parameter and
+  encapsulating one logical permission concern. This makes permissions
+  self-documenting, composable, and easy to grep for when auditing access.
 
 **Bad — IAM logic dumped in `app.py`:**
 ```python
@@ -314,6 +321,26 @@ processing_stack.lambda_function.add_to_role_policy(iam.PolicyStatement(
     actions=["dynamodb:Query", "dynamodb:PutItem"],
     resources=[storage_stack.table.table_arn],
 ))
+```
+
+**Still bad — raw statements just relocated to another file:**
+```python
+# stacks/shared/iam.py — a wall of ungrouped PolicyStatements
+def add_all_permissions(lambda_function):
+    """This is just the app.py slop relocated — no abstraction, no names."""
+    lambda_function.add_to_role_policy(iam.PolicyStatement(
+        actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+        resources=["*"],
+    ))
+    lambda_function.add_to_role_policy(iam.PolicyStatement(
+        actions=["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"],
+        resources=["*"],
+    ))
+    lambda_function.add_to_role_policy(iam.PolicyStatement(
+        actions=["s3:GetObject", "s3:PutObject"],
+        resources=[...],
+    ))
+    # ... 80 more lines of the same
 ```
 
 **Good — permissions encapsulated inside the stack that owns the resource:**
@@ -337,18 +364,28 @@ class ProcessingStack(Stack):
         # Permissions live with the resource that needs them
         storage.bucket.grant_read_write(self.lambda_function)
         storage.table.grant_read_write_data(self.lambda_function)
-        grant_bedrock_invoke(self.lambda_function)  # shared helper
+        grant_bedrock_invoke(self.lambda_function)  # shared helper, named by intent
 ```
 
+**Good — named helpers, one logical concern each, generic `grantee` parameter:**
 ```python
-# stacks/shared/iam.py — DRY helper for repeated permission patterns
-def grant_bedrock_invoke(grantee: _lambda.Function) -> None:
+# stacks/shared/iam.py — each function is one auditable permission grant
+def grant_bedrock_invoke(grantee: iam.IGrantable) -> None:
     """Grant Bedrock model invocation. Uses resources=* because
     Bedrock InvokeModel has no resource-level ARN support."""
-    grantee.add_to_role_policy(iam.PolicyStatement(
+    grantee.grant_principal.add_to_principal_policy(iam.PolicyStatement(
         sid="InvokeBedrock",
         actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
         resources=["*"],  # No resource-level ARN support for these actions
+    ))
+
+
+def grant_read_athena(grantee: iam.IGrantable, *, workgroup_arn: str) -> None:
+    """Grant read-only Athena query access scoped to a workgroup."""
+    grantee.grant_principal.add_to_principal_policy(iam.PolicyStatement(
+        sid="ReadAthena",
+        actions=["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"],
+        resources=[workgroup_arn],
     ))
 ```
 
@@ -611,6 +648,10 @@ def test_table_is_destroyed_in_dev(dev_template):
 - **Template-managed workflow files modified locally**
   (`.github/workflows/ci_cd_cdk_app.yml`, `ci_pr_cdk_app.yml` are managed by
   `gds-idea-app-kit` and must not be edited directly)
+- **IAM permissions relocated but not refactored** — moving raw
+  `PolicyStatement` blocks out of `app.py` into a `permissions.py`/`iam.py`
+  file without grouping them into named, single-purpose helper functions
+  (e.g. `grant_bedrock_invoke()`, `grant_read_athena()`) is only a partial fix
 
 ### Do NOT flag
 
