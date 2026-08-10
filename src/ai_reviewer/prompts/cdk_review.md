@@ -160,9 +160,7 @@ env_config = EnvironmentConfig(
   standing aim is to move away from `cdk.json` for configuration as far as
   possible — it should not grow new app-specific keys.
 - No app-specific config values (table names, bucket names, account numbers,
-  feature toggles, dataset definitions, environment blocks) belong there. These
-  belong in a typed config model sourced from a `config/` directory (TOML/YAML),
-  `pyproject.toml`, or the model's own defaults.
+  feature toggles, dataset definitions, environment blocks) belong there.
 - Flag any PR that **adds to or extends** an app-specific config block in
   `cdk.json` (e.g. `context.environments`), and treat migrating existing values
   out as the preferred direction rather than leaving them in place.
