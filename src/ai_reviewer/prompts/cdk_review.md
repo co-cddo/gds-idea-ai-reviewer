@@ -21,14 +21,16 @@ serves as both a human-readable reference and the automated reviewer's criteria.
 - Untyped context lookups (`self.node.try_get_context("thing")`) return
   `Optional[str]`, have no validation, and crash at synth time with cryptic
   errors on typos.
-- The one acceptable raw context lookup is `phase` (or an equivalent single
-  selector) — it gates entry into the typed config system. It's validated
-  immediately, and everything else (account number, region, resource names)
-  is derived from that single value.
-- If the repo uses `gds-idea-app-kit`, config should come from
-  `gds_idea_cdk_constructs` — do not flag "missing local config.py" in that
-  case; the shared library's `AppConfig`/`DeploymentConfig` already satisfy
-  this standard.
+- Account resolution needs no context lookups at all: `DeploymentConfig`
+  (from `gds_idea_cdk_constructs`) resolves the environment directly from the
+  AWS account of the IAM role calling `cdk deploy`/`cdk synth`. Flag any
+  `try_get_context("phase")` or similar pattern used purely to select an
+  account number — it is unnecessary indirection.
+- All gds-idea repos must use `gds_idea_cdk_constructs` for this — do not
+  flag "missing local config.py" when the shared library's
+  `AppConfig`/`DeploymentConfig` already satisfy this standard. It depends
+  only on `aws_cdk` and `boto3`, so pulling it in does not require the full
+  `gds-idea-app-kit`.
 
 **Bad:**
 ```python
@@ -38,54 +40,28 @@ deploy_emails = app.node.try_get_context("deploy_ses_infrastructure").lower() ==
 account = app.node.try_get_context("prod_account_number")
 ```
 
-**Good — import from shared library (preferred for app-kit repos):**
+**Good — use `gds_idea_cdk_constructs` (required for all gds-idea repos):**
 ```python
-from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
+from gds_idea_cdk_constructs import AppConfig, DeploymentConfig, DeploymentEnvironment
 
 app_config = AppConfig.from_pyproject()
-dep_config = DeploymentConfig(cdk_env)  # environment derived from AWS account ID
-```
-
-**Good — local Pydantic BaseModel (when building config from scratch):**
-```python
-# config.py
-from enum import Enum
-from typing import Literal
-
-from pydantic import computed_field
-from pydantic_settings import BaseSettings
-
-
-class DeploymentEnvironment(Enum):
-    DEVELOPMENT = "992382722318"
-    PRODUCTION = "588077357019"
-
-
-class AppConfig(BaseSettings):
-    phase: Literal["dev", "prod"]
-    project: str = "my-app"
-
-    @computed_field
-    @property
-    def account_number(self) -> str:
-        env = DeploymentEnvironment.DEVELOPMENT if self.phase == "dev" else DeploymentEnvironment.PRODUCTION
-        return env.value
-
-    @computed_field
-    @property
-    def region(self) -> str:
-        return "eu-west-2"
-
-    def resource_name(self, resource: str) -> str:
-        return f"{{self.project}}-{{resource}}-{{self.phase}}"
+dep_config = DeploymentConfig(cdk_env)  # resolves environment from the AWS account of the calling IAM role
 ```
 
 ```python
 # app.py
+import os
+
+import aws_cdk as cdk
+from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
+
 app = cdk.App()
-phase = app.node.try_get_context("phase") or "dev"  # single permitted context lookup
-config = AppConfig(phase=phase)  # everything else derived from here
-env = cdk.Environment(account=config.account_number, region=config.region)
+app_config = AppConfig.from_pyproject()
+cdk_env = cdk.Environment(
+    account=os.environ["CDK_DEFAULT_ACCOUNT"],
+    region=os.environ.get("CDK_DEFAULT_REGION", "eu-west-2"),
+)
+dep_config = DeploymentConfig(cdk_env)  # environment resolved from the calling role
 ```
 
 ### Keep cdk.json limited to entrypoint and feature flags
@@ -98,8 +74,9 @@ env = cdk.Environment(account=config.account_number, region=config.region)
 
 ### Derive account IDs and ARNs from config, never hardcode them
 
-- AWS account IDs and ARNs must come from config objects or enums (e.g.
-  `DeploymentEnvironment.PRODUCTION.value`), never as hardcoded string literals.
+- AWS account IDs and ARNs must come from `DeploymentEnvironment` (imported
+  from `gds_idea_cdk_constructs`) or other config objects, never as hardcoded
+  string literals.
 - Hardcoded account IDs create duplication, are easy to get wrong in
   copy-paste, and make it impossible to deploy to a new account without a
   repo-wide find-and-replace.
@@ -109,9 +86,13 @@ env = cdk.Environment(account=config.account_number, region=config.region)
 resources=["arn:aws:kms:eu-west-2:588077357019:key/dc126e48-..."]
 ```
 
-**Good:**
+**Good — cross-account ARN reference (e.g. a KMS key shared from prod):**
 ```python
-resources=[f"arn:aws:kms:{{config.region}}:{{DeploymentEnvironment.PRODUCTION.value}}:key/{{config.kms_key_id}}"]
+from gds_idea_cdk_constructs import DeploymentEnvironment
+
+resources=[
+    f"arn:aws:kms:{{dep_config.cdk_env.region}}:{{DeploymentEnvironment.PRODUCTION.value}}:key/{{config.kms_key_id}}"
+]
 ```
 
 ## 2. Stack Structure
@@ -391,15 +372,15 @@ def grant_bedrock_invoke(grantee: _lambda.Function) -> None:
 function_name="evidence-base-upload-processor"  # No env suffix — will collide
 ```
 
-**Good — using the config helper method:**
+**Good — explicit f-string using shared-library primitives:**
 ```python
-function_name=config.resource_name("upload-processor")
-# produces: "my-app-upload-processor-dev"
-```
+from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
 
-**Good — explicit f-string (same result, more visible):**
-```python
-function_name=f"{{config.project}}-upload-processor-{{config.phase}}"
+app_config = AppConfig.from_pyproject()
+dep_config = DeploymentConfig(cdk_env)
+
+function_name = f"{{app_config.app_name}}-upload-processor-{{dep_config.environment.short_name}}"
+# produces: "my-app-upload-processor-dev"
 ```
 
 ### Derive stack IDs from a single consistent pattern
@@ -415,14 +396,17 @@ function_name=f"{{config.project}}-upload-processor-{{config.phase}}"
 **Bad — inconsistent, ad-hoc stack IDs:**
 ```python
 # Each stack picks a different convention
-StorageStack(app, "StorageStack", config=config, env=env)                     # no prefix, no phase
-ProcessingStack(app, "ai-pqs-ProcessingStack", config=config, env=env)        # prefix but no phase
-SecretsStack(app, f"{{project}}-secrets-stack-{{phase}}", config=config, env=env)  # kebab-case, different style
+StorageStack(app, "StorageStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)                     # no prefix, no phase
+ProcessingStack(app, "ai-pqs-ProcessingStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)        # prefix but no phase
+SecretsStack(app, f"{{project}}-secrets-stack-{{phase}}", app_config=app_config, deployment_config=dep_config, env=cdk_env)  # kebab-case, different style
 ```
 
 **Good — a single `StackId` helper enforces the pattern:**
 ```python
-# config.py
+# stacks/shared/stack_id.py
+from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
+
+
 class StackId:
     """Generates consistent CDK stack IDs from config."""
 
@@ -431,8 +415,8 @@ class StackId:
         self.phase = phase
 
     @classmethod
-    def from_config(cls, config: AppConfig) -> "StackId":
-        return cls(project=config.project, phase=config.phase)
+    def from_config(cls, app_config: AppConfig, dep_config: DeploymentConfig) -> "StackId":
+        return cls(project=app_config.app_name, phase=dep_config.environment.short_name)
 
     def __call__(self, stack_name: str) -> str:
         return f"{{self.project}}-{{stack_name}}-{{self.phase}}"
@@ -440,16 +424,24 @@ class StackId:
 
 ```python
 # app.py
+import os
+
+import aws_cdk as cdk
+from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
+
 app = cdk.App()
-phase = app.node.try_get_context("phase") or "dev"
-config = AppConfig(phase=phase)
-sid = StackId.from_config(config)
-env = cdk.Environment(account=config.account_number, region=config.region)
+app_config = AppConfig.from_pyproject()
+cdk_env = cdk.Environment(
+    account=os.environ["CDK_DEFAULT_ACCOUNT"],
+    region=os.environ.get("CDK_DEFAULT_REGION", "eu-west-2"),
+)
+dep_config = DeploymentConfig(cdk_env)  # environment resolved from the calling role
+sid = StackId.from_config(app_config, dep_config)
 
 # Every stack ID is now guaranteed consistent: "ai-pqs-StorageStack-dev"
-storage = StorageStack(app, sid("StorageStack"), config=config, env=env)
-secrets = SecretsStack(app, sid("SecretsStack"), config=config, env=env)
-processing = ProcessingStack(app, sid("ProcessingStack"), config=config, env=env)
+storage = StorageStack(app, sid("StorageStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
+secrets = SecretsStack(app, sid("SecretsStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
+processing = ProcessingStack(app, sid("ProcessingStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
 ```
 
 ## 6. Tagging
@@ -506,7 +498,11 @@ table = dynamodb.Table(self, "PapersTable", ...,
 
 **Good:**
 ```python
-removal = RemovalPolicy.DESTROY if config.phase == "dev" else RemovalPolicy.RETAIN
+from gds_idea_cdk_constructs import DeploymentEnvironment
+
+removal = (
+    RemovalPolicy.DESTROY if dep_config.environment == DeploymentEnvironment.DEVELOPMENT else RemovalPolicy.RETAIN
+)
 table = dynamodb.Table(self, "PapersTable", ...,
     removal_policy=removal,
     point_in_time_recovery=True)
@@ -529,22 +525,24 @@ table = dynamodb.Table(self, "PapersTable", ...,
 **Example test patterns:**
 
 ```python
-# Fixtures: instantiate the stack per environment using AppConfig
+# Fixtures: instantiate the stack per environment using DeploymentEnvironment
 # (no real AWS calls, no hardcoded account IDs)
+from gds_idea_cdk_constructs import DeploymentEnvironment
+
+
 @pytest.fixture
 def dev_template():
     app = cdk.App()
-    config = AppConfig(phase="dev")
-    stack = StorageStack(app, "TestStorage", config=config,
-                         env=cdk.Environment(account=config.account_number, region=config.region))
+    cdk_env = cdk.Environment(account=DeploymentEnvironment.DEVELOPMENT.value, region="eu-west-2")
+    stack = StorageStack(app, "TestStorage", env=cdk_env)
     return assertions.Template.from_stack(stack)
+
 
 @pytest.fixture
 def prod_template():
     app = cdk.App()
-    config = AppConfig(phase="prod")
-    stack = StorageStack(app, "TestStorage", config=config,
-                         env=cdk.Environment(account=config.account_number, region=config.region))
+    cdk_env = cdk.Environment(account=DeploymentEnvironment.PRODUCTION.value, region="eu-west-2")
+    stack = StorageStack(app, "TestStorage", env=cdk_env)
     return assertions.Template.from_stack(stack)
 
 # Test IAM scoping
@@ -585,12 +583,19 @@ def test_table_is_destroyed_in_dev(dev_template):
 
 ### Mock AWS calls in tests — never hit real infrastructure
 
-- Tests must use `AppConfig(phase="dev")` (or `DeploymentConfig.from_dict()`
-  for shared-library repos) — never call real AWS APIs during testing.
+- Tests must use `DeploymentEnvironment.DEVELOPMENT.value` /
+  `DeploymentEnvironment.PRODUCTION.value` (from `gds_idea_cdk_constructs`) to
+  set the CDK Environment account, or `DeploymentConfig.from_dict()` for
+  repos that also need Parameter Store-backed config — never call real AWS
+  APIs during testing.
 
 ## 9. Anti-Patterns to Flag
 
 - **Hardcoded AWS account IDs or ARNs** as string literals in stack code
+- **Defining a local `DeploymentEnvironment` enum with hardcoded account IDs**
+  — `DeploymentConfig` and `DeploymentEnvironment` from `gds_idea_cdk_constructs`
+  resolve the environment from the calling IAM role automatically; duplicating
+  account IDs locally is redundant and creates drift risk
 - **App-specific config values in `cdk.json`** context block (table names,
   bucket names, feature toggles)
 - **Live AWS API calls at synth time** (boto3 calls in `app.py` that make
