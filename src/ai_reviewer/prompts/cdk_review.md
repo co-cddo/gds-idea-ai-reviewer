@@ -40,6 +40,15 @@ deploy_emails = app.node.try_get_context("deploy_ses_infrastructure").lower() ==
 account = app.node.try_get_context("prod_account_number")
 ```
 
+**Also bad — raw dict lookups with manual type casting:**
+```python
+# No type safety: a typo like "athenaQueryBucket" silently returns None and
+# fails much later. The str() cast hides the missing-key problem until runtime.
+environments_ctx = app.node.try_get_context("environments") or {{}}
+env_cfg = environments_ctx.get(deployment_env)
+athena_queries_bucket_name = str(env_cfg["athenaQueriesBucket"])
+```
+
 **Good — use `gds_idea_cdk_constructs` (required for all gds-idea repos):**
 ```python
 from gds_idea_cdk_constructs import AppConfig, DeploymentConfig, DeploymentEnvironment
@@ -64,11 +73,97 @@ cdk_env = cdk.Environment(
 dep_config = DeploymentConfig(cdk_env)  # environment resolved from the calling role
 ```
 
+### Model structured config with nested sub-models, not flat blobs
+
+- When per-environment config has repeated or grouped structure (a list of
+  datasets, a block of Athena settings, per-bucket options), model it with
+  nested Pydantic sub-models (e.g. `DatasetConfig` inside `EnvironmentConfig`)
+  rather than a flat bag of loosely related strings.
+- Sub-models give each logical group its own validation, defaults, and
+  autocomplete, and make the available configuration discoverable by reading
+  the model instead of hunting through `cdk.json` for every `.get()` call.
+- Config values must live in a dedicated config source loaded **through** the
+  typed model — a `config/` directory (TOML/YAML), `pyproject.toml`, or the
+  model's own defaults — **not** in `cdk.json`. The aim is to move config out of
+  `cdk.json` entirely; treat any new app-specific values added to `cdk.json` as
+  something to flag, even when they are later read via a typed wrapper.
+
+**Good — nested, self-documenting config keyed by environment:**
+```python
+# config.py
+from pydantic import BaseModel, field_validator
+
+
+class DatasetConfig(BaseModel):
+    table_name: str
+    s3_bucket_name: str
+    s3_prefix: str
+    csv_delimiter: str = ","
+    csv_quote: str = '"'
+
+
+class EnvironmentConfig(BaseModel):
+    environment: str  # "dev" or "prod" — passed in from DeploymentEnvironment.short_name
+    glue_database_name: str
+    athena_workgroup_name: str
+    athena_queries_bucket: str
+    create_source_buckets: bool = False
+    datasets: list[DatasetConfig]
+
+    @field_validator("datasets")
+    @classmethod
+    def _datasets_not_empty(cls, value: list[DatasetConfig]) -> list[DatasetConfig]:
+        if not value:
+            raise ValueError("At least one dataset must be configured")
+        return value
+```
+
+```python
+# app.py — DeploymentEnvironment resolves *which* environment; EnvironmentConfig
+# holds the app-specific values *for* that environment. Keep the two separate:
+# EnvironmentConfig never has an aws_account/aws_region field of its own.
+from gds_idea_cdk_constructs import DeploymentEnvironment
+from config import EnvironmentConfig
+
+environment = DeploymentEnvironment.from_cdk_env(cdk_env)
+
+env_config = EnvironmentConfig(
+    environment=environment.short_name,
+    glue_database_name=f"my-app-db-{{environment.short_name}}",
+    athena_workgroup_name=f"my-app-wg-{{environment.short_name}}",
+    athena_queries_bucket=f"my-app-athena-queries-{{environment.short_name}}",
+    datasets=[...],
+)
+```
+
+### Enforce environment parity and validate individual fields
+
+- When the repo defines per-environment app-specific config (e.g. dataset
+  lists, workgroup names, bucket names), a single model must be used to
+  construct the config for **every** environment so nothing lets one
+  environment gain or lose a field the other doesn't have. Adding a field for
+  one environment and forgetting the other is a common, silent divergence.
+- Add per-field validators for values with a known shape (e.g. bucket names
+  non-empty, a datasets list that must contain at least one entry, workgroup
+  names matching an expected pattern) so invalid config fails fast at synth
+  time with a clear error, not at CloudFormation deploy or container runtime.
+  See the `_datasets_not_empty` validator above for an example.
+- Never validate or duplicate AWS account IDs/regions in this model — that is
+  `DeploymentEnvironment`'s job. Use `dep_config.environment.short_name` (or
+  `DeploymentEnvironment.from_cdk_env(cdk_env).short_name`) as the selector
+  passed into the app-specific config, rather than a hand-rolled
+  `friendly_name` translation or a locally re-validated account number.
+
 ### Keep cdk.json limited to entrypoint and feature flags
 
-- `cdk.json` must contain ONLY the app entrypoint and CDK feature flags.
+- `cdk.json` must contain ONLY the app entrypoint and CDK feature flags. The
+  standing aim is to move away from `cdk.json` for configuration as far as
+  possible — it should not grow new app-specific keys.
 - No app-specific config values (table names, bucket names, account numbers,
-  feature toggles) belong there.
+  feature toggles, dataset definitions, environment blocks) belong there.
+- Flag any PR that **adds to or extends** an app-specific config block in
+  `cdk.json` (e.g. `context.environments`), and treat migrating existing values
+  out as the preferred direction rather than leaving them in place.
 - `cdk.json` is not validated at synth time, has no type safety, and is harder
   to review in PRs because it sits alongside ~60 lines of boilerplate flags.
 
@@ -559,6 +654,37 @@ table = dynamodb.Table(self, "PapersTable", ...,
   behaviour) or manual inspection of `cdk diff` output. Assertion tests catch
   regressions before they reach deployment.
 
+### Validate every environment's config on every PR
+
+- When the repo defines a typed config model, add a test that instantiates the
+  model for **each** environment (`dev` and `prod`) so invalid or divergent
+  config fails in CI, not at deploy time.
+- This guards environment parity (both environments must satisfy the same
+  model) and exercises any per-field validators, satisfying the "invalid config
+  fails fast with a clear error" bar.
+
+**Example config-validation test:**
+```python
+import pytest
+
+from config import DatasetConfig, EnvironmentConfig
+
+
+@pytest.mark.parametrize("environment", ["dev", "prod"])
+def test_environment_config_is_valid(environment: str):
+    # Construction raises pydantic.ValidationError if any field is missing,
+    # mistyped, or fails a field validator — so a passing test proves both
+    # environments satisfy the same model.
+    env_config = EnvironmentConfig(
+        environment=environment,
+        glue_database_name=f"my-app-db-{{environment}}",
+        athena_workgroup_name=f"my-app-wg-{{environment}}",
+        athena_queries_bucket=f"my-app-athena-queries-{{environment}}",
+        datasets=[DatasetConfig(table_name="papers", s3_bucket_name=f"my-app-papers-{{environment}}", s3_prefix="raw/")],
+    )
+    assert env_config.environment == environment
+```
+
 **Example test patterns:**
 
 ```python
@@ -635,6 +761,12 @@ def test_table_is_destroyed_in_dev(dev_template):
   account IDs locally is redundant and creates drift risk
 - **App-specific config values in `cdk.json`** context block (table names,
   bucket names, feature toggles)
+- **Raw dict/context lookups with manual type casting** (`str(env_cfg["key"])`,
+  `... or {{}}` fallbacks) instead of loading through a typed model
+- **Config accessed via string keys** scattered across `app.py`/stacks rather
+  than typed attribute access with autocomplete
+- **Environment config that isn't validated for both `dev` and `prod`** by the
+  same model (silent shape divergence between environments)
 - **Live AWS API calls at synth time** (boto3 calls in `app.py` that make
   `cdk synth` dependent on credentials/network)
 - **Unresolved merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`)
@@ -661,6 +793,9 @@ def test_table_is_destroyed_in_dev(dev_template):
 - Choices that are valid but different from a personal preference (e.g.
   separate accounts per environment vs. shared account with phase suffix —
   both are valid)
+- A typed config model reading from `config/` (TOML/YAML), `pyproject.toml`, or
+  its own defaults — these are the preferred homes; do not insist config move to
+  yet another location once it is already out of `cdk.json` and typed
 - **`print()` statements in stack/infrastructure code** (`app.py`,
   `stacks/**/*.py`) — these are acceptable for surfacing synth/deploy-time
   debugging output in the terminal; only Lambda handler code requires
