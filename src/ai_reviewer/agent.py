@@ -31,7 +31,7 @@ class ReviewerAgent:
     def __init__(
         self,
         github_token: str,
-        model_id: str = "anthropic.claude-sonnet-4-6",
+        model_id: str = "anthropic.claude-sonnet-5",
         aws_region: str = "eu-west-2",
         aws_profile: str | None = None,
     ):

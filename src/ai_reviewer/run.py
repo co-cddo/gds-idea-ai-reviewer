@@ -27,7 +27,7 @@ async def main() -> None:
     pr_number = int(pr_number_str)
 
     # Optional configuration
-    model_id = os.environ.get("MODEL_ID", "anthropic.claude-sonnet-4-6")
+    model_id = os.environ.get("MODEL_ID", "anthropic.claude-sonnet-5")
     aws_region = os.environ.get("AWS_REGION", "eu-west-2")
     aws_profile = os.environ.get("AWS_PROFILE")  # For local testing only (not used in Actions)
 
