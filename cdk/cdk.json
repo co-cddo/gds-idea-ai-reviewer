@@ -15,6 +15,6 @@
     "region": "eu-west-2",
     "github_org": "co-cddo",
     "role_name": "ai-reviewer-role",
-    "bedrock_model_id": "anthropic.claude-sonnet-4-6"
+    "bedrock_model_id": "anthropic.claude-sonnet-5"
   }
 }
