@@ -19,7 +19,7 @@ themselves.
 
 **How to review:** Work from the PR diff you already have from the code review.
 Only review a README if it was added or modified in this PR, **or** if the PR
-changes behaviour that an existing README documents (see Section 5). Judge each
+changes behaviour that an existing README documents (see Section 6). Judge each
 file against its purpose — a subfolder README for a single Lambda does not need
 the full top-level structure. Never invent gaps to fill a quota; flag only what
 would genuinely confuse or slow down a developer.
@@ -39,11 +39,22 @@ would genuinely confuse or slow down a developer.
     state.
   - **Usage** — how to actually run the thing, with working commands.
   - **Configuration** — environment variables, config files, and their defaults.
-  - **Development setup** — how a contributor runs tests and works locally.
+  - **External dependencies** — third-party APIs, other internal systems, or
+    downstream services the app depends on, and what each is used for
+    (see below).
+  - **Architecture / workflow overview** — for repos with more than one
+    component or service, how the pieces fit together (see below).
+  - **Repository structure** — for non-trivial repos, a short overview of the
+    key top-level directories (see below).
+  - **Development setup** — how a contributor gets a local dev environment
+    working (env vars, linting, pre-commit hooks).
+  - **Testing** — how to run the test suite, and what's expected to pass
+    before opening a PR.
+  - **Troubleshooting** — known setup/runtime gotchas (see Section 4).
   - **Licence** — stated or linked.
 - Not every README needs every section. A single-Lambda subfolder README may
-  only need a description, its inputs/outputs, and how to build it. Judge by the
-  file's role, not a checklist.
+  only need a description, its inputs/outputs, the AWS resources it reads from
+  or writes to, and how to build it. Judge by the file's role, not a checklist.
 - The rationale: a README is the first thing a new joiner or external team
   reads. Missing setup or usage information is the most common reason someone
   cannot run a repo they have just cloned.
@@ -60,6 +71,85 @@ legitimately omits sections that do not apply to it.
   prerequisites → install → usage → configuration → development → licence.
 - A reader should not have to scroll to the bottom for prerequisites they needed
   before the install step at the top.
+
+### Document architecture, external dependencies, and repository structure for non-trivial repos
+
+- **Architecture/workflow overview** — if the repo has more than one
+  component or service (e.g. a web app plus a scheduled Lambda plus
+  infrastructure, or multiple stacks that call each other), the README should
+  show how they relate. Prefer a **Mermaid diagram** in a fenced ` ```mermaid `
+  code block over a linked image or an external doc — it renders natively on
+  GitHub, stays in the repo as reviewable text, and shows up in diffs when the
+  architecture changes. A clear prose description of the relationships is an
+  acceptable alternative for simpler cases.
+- **External dependencies** — a reader auditing or extending the app needs to
+  know what it talks to beyond its own code (third-party APIs, other internal
+  systems, downstream services), and briefly what each is for.
+- **Repository structure** — for a repo with more than a handful of
+  top-level directories, a short fenced tree of the key folders (what lives
+  where) saves a reader from having to explore blindly.
+- Scale the expectation to the repo: a single-purpose repo or a small
+  subfolder README does not need any of these — the existing description
+  already conveys the same information.
+
+**Bad — architecture diagram lives only in an external Confluence page:**
+```markdown
+## Architecture
+See our Confluence page for the architecture diagram.
+```
+
+**Good — a Mermaid diagram kept in the repo, reviewable in the diff:**
+`````markdown
+## Architecture
+
+```mermaid
+graph LR
+    Browser --> ALB[ALB with Cognito auth]
+    ALB --> App[Dash/Flask app]
+    App --> S3[S3 - source data]
+    App --> Athena[Athena - queries]
+```
+`````
+
+**Good — a repository structure overview:**
+`````markdown
+## Repository Structure
+
+```text
+app_src/
+  dash_app.py       # Entry point, routing, auth
+  callbacks/        # Callback wiring per page
+  dashboards/       # Page layouts
+  utils/            # Pure helper functions
+lambda/
+  data_refresh/     # Scheduled data-refresh function
+```
+`````
+
+**Bad — the app clearly calls an external API but the README never says so:**
+```python
+# The code calls out to a third-party service...
+response = requests.get(f"https://api.example-provider.com/v1/lookup/{{ref}}")
+```
+```markdown
+<!-- ...but the README has no mention of example-provider.com anywhere -->
+```
+
+**Good — the dependency is named and its purpose is explained:**
+```markdown
+## External Dependencies
+- **Example Provider API** — used to validate case references before
+  submission. Requires an API key set via `EXAMPLE_PROVIDER_API_KEY`.
+```
+
+**Flag when:** a repo with multiple components/services has no architecture
+overview at all and a reader cannot tell how the pieces relate from the README,
+**or** the code clearly calls an external API/service that the README never
+mentions.
+
+**Do not flag when:** a single-service or single-purpose repo has no diagram
+or folder tree — the existing prose already covers the same ground; or every
+external call the code makes is already named in the README, even briefly.
 
 ## 2. Accuracy Against Code
 
@@ -181,7 +271,52 @@ Open the project in VS Code and reopen in the devcontainer.
    **Dev Containers: Reopen in Container** (or `devcontainer up` from the CLI).
 ```
 
-## 4. Usage Examples
+## 4. Troubleshooting
+
+### Capture known, recurring gotchas — don't just document the happy path
+
+- If the repo has a known, recurring setup or runtime issue (devcontainer
+  credential/socket errors, a flaky external dependency, a common
+  misconfiguration), a Troubleshooting section should capture it as a
+  symptom → fix pair, not just leave it to be rediscovered by every new joiner.
+  This is the natural home for the devcontainer failure modes named in
+  Section 3 (missing Docker socket, expired credentials,
+  `NoCredentialProviders`) when they recur often enough to be "known".
+- **Never invent a Troubleshooting section from nothing.** Only flag a gap here
+  when a known recurring issue is actually evident — from the PR description,
+  linked issues, comments, or an existing-but-incomplete Troubleshooting
+  section — not by default the way Installation/Usage are checked. An absent
+  Troubleshooting section is not itself a defect; a *known* gotcha that stays
+  undocumented is.
+- If an existing Troubleshooting section documents an issue this PR fixes, it
+  should be removed or updated in the same PR — a stale troubleshooting entry
+  for a bug that no longer exists is as misleading as a stale code example.
+
+**Bad — a known recurring issue is referenced in the PR but never written down:**
+```markdown
+<!-- PR description mentions: "Fixes the third report of devcontainer builds
+     failing with 'no such file' on first run — needs a rebuild without cache" -->
+<!-- README has no Troubleshooting section at all -->
+```
+
+**Good — the known gotcha is captured as symptom → fix:**
+`````markdown
+## Troubleshooting
+
+**Devcontainer fails on first build with "no such file":**
+Rebuild without the Docker layer cache:
+```bash
+devcontainer build --no-cache
+```
+`````
+
+**Flag when:** a known, recurring issue is evident from the PR/repo context but
+not captured anywhere in the README.
+
+**Do not flag when:** the repo has no known recurring issues yet — do not
+invent a Troubleshooting section just to fill the checklist.
+
+## 5. Usage Examples
 
 ### Show at least one complete, working example
 
@@ -206,7 +341,7 @@ comments = reviewer.run()
 # comments -> list[ReviewComment], each with prefix, file, line, message
 ```
 
-## 5. Keeping Documentation in Step with the Code
+## 6. Keeping Documentation in Step with the Code
 
 ### Update the README when this PR changes behaviour it documents
 
@@ -215,6 +350,14 @@ comments = reviewer.run()
   README must be updated in the same PR.
 - Documentation that lags behind code is the most common source of stale,
   misleading READMEs. Catching it at PR time is the only cheap moment.
+- Treat "is this README maintained?" as an **accuracy** question, not a
+  metadata question: judge freshness by whether the content still matches the
+  current codebase (see Section 2), not by whether it carries a manually
+  maintained "Last updated"/version date. A hand-written date goes stale the
+  moment it is merged and becomes noise for a reviewer to police. If a README
+  does carry such a field and this PR's changes contradict it, flag it the
+  same as any other stale claim — but do not require the field to exist in
+  the first place.
 
 **Flag when:** the diff adds a new `--dry-run` flag (or new env var, endpoint,
 etc.) but the Usage/Configuration section is untouched.
@@ -227,7 +370,7 @@ etc.) but the Usage/Configuration section is untouched.
 - Empty or stub sections with a heading and no content should either be filled
   or removed.
 
-## 6. Clarity, Formatting and Style
+## 7. Clarity, Formatting and Style
 
 ### Keep the writing clear, and the formatting consistent
 
@@ -268,18 +411,20 @@ uv run pytest
   references, and relative links to repo files must resolve.
 - Anchor links (`#section-name`) must match a real heading.
 
-## 7. Comment Prefixes
+## 8. Comment Prefixes
 
 Use a single prefix per comment so the author can triage quickly:
 
 - **Docs:** — Missing or incorrect information that would confuse or mislead a
-  reader (wrong example, undocumented new flag, broken setup step).
+  reader (wrong example, undocumented new flag, broken setup step, an
+  undocumented external dependency a reader would need to know about).
 - **Suggestion:** — A change that would improve readability or completeness but
-  is not strictly wrong.
+  is not strictly wrong (e.g. adding an architecture diagram or folder-structure
+  overview to an already-usable README).
 - **Nit:** — Minor formatting or style issue (missing language tag, heading
   jump, inconsistent list style).
 
-## 8. Example Comments
+## 9. Example Comments
 
 For a README not updated after a behaviour change:
 
@@ -319,7 +464,25 @@ For a placeholder shipped in the diff:
     Docs: This section still contains `TBA`. Please resolve it before merging
     or link a tracked follow-up issue.
 
-## 9. Anti-Patterns to Flag
+For a new external dependency that isn't documented:
+
+    Docs: This PR adds a call to the [ExampleAPI] service, but the README's
+    external dependencies aren't updated to mention it. A reader trying to run
+    this locally won't know they need access to it.
+
+For a non-trivial repo with no architecture overview:
+
+    Suggestion: This repo now has three separate components (the app, the
+    scheduled Lambda, and the infra stack). A short architecture diagram (a
+    Mermaid block would work well) would help a new joiner see how they relate.
+
+For a known gotcha left undocumented:
+
+    Docs: The PR description mentions this fixes a recurring devcontainer build
+    failure — worth adding a Troubleshooting entry so future contributors who
+    hit the same symptom before pulling this fix can find it.
+
+## 10. Anti-Patterns to Flag
 
 - **Code examples that do not match the current code** (renamed functions,
   changed signatures, removed flags)
@@ -336,13 +499,23 @@ For a placeholder shipped in the diff:
 - **A `.devcontainer/` in the repo but no documented launch steps** — or steps
   that skip host-side prerequisites (container runtime, AWS profile export, role
   assumption/MFA) and jump straight to "reopen in container"
+- **A multi-component/multi-service repo with no architecture overview at all**
+  — a reader cannot tell how the pieces relate
+- **A clear external dependency/integration used by the code with no mention
+  in the README**
+- **A known, recurring issue evident from the PR/repo context left out of a
+  Troubleshooting section** (or an existing entry left stale after the PR fixes it)
 - **Incorrect file paths or directory structure** that no longer matches the repo
+- **A repository-structure overview that no longer matches the actual layout**
 - **Duplicated content that will drift** (setup steps copy-pasted instead of
   linking the shared source)
+- **A manually maintained "Last updated"/version marker contradicted by this
+  PR's actual changes** (see Section 6 — prefer accuracy-tracking over a date
+  stamp, but a stale one that is present and wrong should still be flagged)
 - **Heading-level jumps or multiple top-level `#` titles**
 - **Unresolved merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`)
 
-## 10. Do NOT Flag
+## 11. Do NOT Flag
 
 - Stylistic phrasing choices that are clear and correct but not how you would
   personally word them
@@ -353,6 +526,14 @@ For a placeholder shipped in the diff:
 - American vs British spelling in third-party quoted text or external tool names
 - The absence of badges, logos, or a table of contents (nice-to-have, not
   required)
+- The absence of an architecture diagram or folder-structure overview in a
+  small, single-purpose repo where the existing prose already conveys the
+  same information
+- A missing Troubleshooting section when the repo has no known recurring
+  issues — do not invent one to fill the checklist
+- The absence of a "Last updated" date field — freshness is judged by
+  accuracy to the current code (Sections 2 and 6), not by a manually
+  maintained date stamp
 - A good README that could be marginally better — one **Suggestion:** is enough;
   do not nitpick every sentence
 - Auto-generated README content produced by a template or tool
