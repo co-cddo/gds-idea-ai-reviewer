@@ -19,7 +19,10 @@ reviewer), general Python bugs/security not specific to Dash's reactive model
 reviewer), README files (delegate to the README reviewer), and any AI
 agent/LLM-orchestration code the app embeds (e.g. a knowledge-base search agent,
 MCP tool servers, RAG pipelines) — that is an agent-engineering concern, not a
-Dash reactive-system concern, even when it lives inside the same `app_src/`.
+Dash reactive-system concern, even when it lives inside the same `app_src/`. Also
+out of scope: front-end accessibility audits, colour/design-system/typography
+audits, cross-device/cross-browser compatibility, and dependency/framework
+version freshness — see Section 10 for why and where each of those belongs.
 
 **How to review:** Work from the PR diff you already have from the code review.
 For each new or modified callback, identify its trigger (`Input`), its
@@ -135,7 +138,9 @@ precedence rule.
 - Extract the actual logic into plain functions outside the `@callback`
   decorator (in `utils/`, `transforms.py`, or similar) so it can be unit
   tested without running Dash. The callback body should mostly be: unpack
-  arguments, call the plain function(s), return the result.
+  arguments, call the plain function(s), return the result. A callback is
+  connective tissue between the front end and the back end, not the place
+  business logic lives.
 - Use `no_update`/`dash.exceptions.PreventUpdate` deliberately, with a comment
   explaining why the callback should not update in that branch — not as a
   default fallback added to silence an error.
@@ -198,6 +203,88 @@ def save_filters(search_text: str | None, department: str | None) -> dict:
     }}
 ```
 
+### Name callbacks for the state transition they perform, not the trigger
+
+- Callback function names should describe *what changes*, using a
+  consistent verb prefix — `update_`, `sync_`, `toggle_`, `display_` — not
+  the triggering event (`on_click`, `handle_change`) and not a generic
+  `callback_1`/`cb`.
+- A consistent naming scheme makes it possible to grep for "everything that
+  writes to X" or "everything that syncs filter state" across the codebase.
+
+**Bad — names describe the trigger, not the effect, and give no clue what
+they touch:**
+```python
+@app.callback(Output(Ids.DEPARTMENT_DROPDOWN, "options"), Input(Ids.URL, "pathname"))
+def on_page_load(pathname): ...
+
+@app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
+def callback_2(department): ...
+```
+
+**Good — verb-first names that describe the state transition:**
+```python
+@app.callback(Output(Ids.DEPARTMENT_DROPDOWN, "options"), Input(Ids.URL, "pathname"))
+def update_department_options(pathname): ...
+
+@app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
+def update_department_chart(department): ...
+```
+
+**Flag when:** a callback is named generically (`callback`, `cb1`, `on_change`)
+with no indication of what state it updates.
+
+### One callback per `Output` — avoid duplicate-output races
+
+- Prefer a single callback per `Output` wherever the triggers can reasonably
+  be combined. Dash rejects a second callback writing to the same `Output`
+  unless it is given `allow_duplicate=True` — and that flag doesn't remove
+  the underlying risk, it only silences the error.
+- If two different user actions can both end up writing to the same
+  `Output`, whichever callback's Dash resolves last "wins", and if both can
+  fire from the same interaction, the result is a race: which value ends up
+  on screen depends on execution order, not on user intent.
+- When multiple triggers genuinely need to produce the same `Output`,
+  combine them into one callback with multiple `Input`s and branch on
+  `ctx.triggered_id`, rather than writing two callbacks with
+  `allow_duplicate=True`.
+
+**Bad — two callbacks racing to write the same `Output`:**
+```python
+@app.callback(Output(Ids.STATUS, "children"), Input(Ids.SAVE_BUTTON, "n_clicks"))
+def show_saved(n_clicks):
+    return "Saved"
+
+
+@app.callback(
+    Output(Ids.STATUS, "children", allow_duplicate=True),
+    Input(Ids.REFRESH_BUTTON, "n_clicks"),
+    prevent_initial_call=True,
+)
+def show_refreshed(n_clicks):
+    return "Refreshed"
+```
+
+**Good — one callback, one `Output`, branching on what triggered it:**
+```python
+@app.callback(
+    Output(Ids.STATUS, "children"),
+    Input(Ids.SAVE_BUTTON, "n_clicks"),
+    Input(Ids.REFRESH_BUTTON, "n_clicks"),
+)
+def update_status(save_clicks, refresh_clicks):
+    triggered_id = ctx.triggered_id
+    if triggered_id == Ids.SAVE_BUTTON:
+        return "Saved"
+    if triggered_id == Ids.REFRESH_BUTTON:
+        return "Refreshed"
+    return no_update
+```
+
+**Flag when:** two or more callbacks target the same `Output` (with or
+without `allow_duplicate=True`) and there is no stated reason a single
+combined callback isn't possible.
+
 ### Avoid feedback loops between saved state and visible controls
 
 - When a callback both reads a saved `dcc.Store` value and writes to a
@@ -230,18 +317,76 @@ with no `ctx.triggered_id` guard to break the cycle.
 
 - Repeated database/Athena/API calls, or re-loading the same dataset, inside
   a callback that fires often (typing, filter changes) should go through a
-  cached provider/service object instead of calling the data source directly
-  each time.
+  single provider/service object instead of calling the data source directly
+  each time — see "One function per resource" below.
 - A data provider should have a clear refresh strategy (e.g. scheduled
   refresh, retry with backoff, and a last-known-good fallback on failure) so
   a transient upstream failure does not take down every page that reads it.
-- Cache wrappers (`flask_caching`, `diskcache`) are only safe to add once the
-  cache key, lifetime/TTL, invalidation trigger, and per-user isolation (if
-  the data is user-specific) are understood and stated — an unscoped or
-  unbounded cache is a correctness and memory risk.
+  If a provider has never successfully loaded at all (e.g. first deploy, or
+  the upstream source is fully unavailable with no last-known-good snapshot
+  yet), callbacks reading it must handle that explicitly — an empty state or
+  a clear on-page message — rather than letting an unhandled exception crash
+  the callback and take the page down (see Section 8).
 - Long-running work (multi-second API calls, LLM calls, large exports) should
   use Dash's background-callback mechanism when the app already has one
   configured, rather than blocking the request/response cycle synchronously.
+
+### One function per resource, not a repeated fetch function per dataset
+
+- If several callbacks read the same underlying resource (a table, an API),
+  they should all go through the same function/provider, parameterised by
+  what varies (which dataset, which filter) — not a near-identical
+  `get_x_data()`, `get_y_data()`, `get_z_data()` copy-pasted per dataset.
+- A single provider that knows how to load *any* of the app's datasets by
+  name (a small registry keyed by dataset name) is easier to reason about
+  and test than one bespoke loader function per dataset, and gives you one
+  place to add retry/fallback/refresh behaviour that every dataset gets for
+  free.
+
+**Bad — a near-identical loader duplicated per dataset:**
+```python
+def get_cases_data(): ...   # fetch, clean, cache — copy-pasted three times
+def get_spend_data(): ...   # with the dataset name as the only real difference
+def get_assurance_data(): ...
+```
+
+**Good — one provider, parameterised by dataset (construction does no I/O —
+see "Do not eagerly load data on import" below; datasets are only fetched
+when a callback actually asks for one):**
+```python
+class DatasetRegistry:
+    """Loads and holds the app's datasets, keyed by name."""
+
+    def get_dataframe(self, dataset: str) -> pd.DataFrame: ...
+
+
+DATASETS = DatasetRegistry()  # safe to import — no dataset is fetched yet
+
+
+# callbacks/overview_callbacks.py
+@app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
+def update_chart(department: str | None):
+    cases = DATASETS.get_dataframe("cases")
+    return build_chart(filter_by_department(cases, department))
+```
+
+### Caching is not the default — add it only with evidence it earns its cost
+
+- Do not reach for a cache as a first response to "this might be slow".
+  Add caching only once you can point to a specific, repeated cost it
+  removes (e.g. the same query firing on every keystroke of a debounced
+  search) — and remove it again if it turns out not to be hit, or not to
+  save anything meaningful. A cache that adds indirection but delivers no
+  measurable benefit is worse than the calls it was meant to avoid: it is
+  extra code, an extra failure mode, and an extra thing to explain.
+- If the app does use caching, standardise on **one** mechanism app-wide
+  (e.g. `flask_caching` everywhere, not `flask_caching` in one callback and
+  a hand-rolled module-level dict in another) so invalidation logic lives in
+  one place and isn't reinvented per callback.
+- Whichever mechanism is used, the cache key, lifetime/TTL, invalidation
+  trigger, and per-user isolation (if the data is user-specific) must be
+  understood and stated — an unscoped or unbounded cache is a correctness
+  and memory risk, not just a performance one.
 
 **Bad — hits the same API/DB on every filter change with no caching:**
 ```python
@@ -249,6 +394,13 @@ with no `ctx.triggered_id` guard to break the cycle.
 def update_chart(department):
     data = fetch_from_athena(department)  # new query every keystroke/selection
     return build_chart(data)
+```
+
+**Bad — a cache was added but nothing shows it is actually reducing calls:**
+```python
+@cache.memoize()
+def get_department_options(now: float):  # keyed on current time -> never a hit
+    return fetch_department_options()
 ```
 
 **Good — a provider owns fetch/refresh/fallback; the callback just reads it:**
@@ -269,13 +421,66 @@ def update_chart(department: str | None):
     return build_chart(filter_by_department(data, department))
 ```
 
+### Do not eagerly load data on import
+
+- A data provider's construction (`__init__`, or code that runs at module
+  import time) must not perform I/O — no network call, database query, or
+  file read should happen just because the module was imported. The actual
+  load belongs behind a method call, triggered lazily on first use (or by an
+  explicit `.load()`/scheduled refresh), never as a side effect of `import`.
+- This is what makes the provider testable: a test that imports the module
+  (or a callback that uses it) should not need real network/S3/DB access
+  just to run, and should be able to patch the load method or substitute a
+  fake provider instead.
+
+**Bad — the read happens the moment this module is imported:**
+```python
+# services/data_provider.py
+DATA = pd.read_csv("s3://bucket/data.csv")  # runs at import time; every test
+                                             # that imports this module needs
+                                             # real S3 access to even start
+```
+
+**Good — construction does no I/O; the load is deferred and patchable:**
+```python
+# services/data_provider.py
+class DataProvider:
+    def __init__(self):
+        self._data: pd.DataFrame | None = None  # nothing loaded yet
+
+    def get_dataframe(self) -> pd.DataFrame:
+        if self._data is None:
+            self._data = self._load()
+        return self._data
+
+    def _load(self) -> pd.DataFrame:
+        return pd.read_csv("s3://bucket/data.csv")
+
+
+DATA_PROVIDER = DataProvider()  # safe to import anywhere — no I/O yet
+```
+```python
+# tests/services/test_data_provider.py — patch the load, not the network
+def test_get_dataframe_returns_loaded_data(monkeypatch):
+    provider = DataProvider()
+    monkeypatch.setattr(provider, "_load", lambda: pd.DataFrame({{"a": [1]}}))
+    assert list(provider.get_dataframe()["a"]) == [1]
+```
+
+**Flag when:** a module-level statement performs network/file/database I/O
+directly (not behind a function/method), or a provider's `__init__` calls
+its own load method eagerly instead of deferring it to first use.
+
 ### Avoid large or duplicated payloads in `dcc.Store`
 
 - `dcc.Store` serialises to JSON and round-trips through the browser on every
   read/write — do not store an entire dataset or large table there when a
   small filter/id would let the callback re-derive the data server-side.
 - Flag a `dcc.Store` write containing a full dataframe/record list where the
-  same data is already available from a server-side provider.
+  same data is already available from a server-side provider. Datasets are
+  server-side, immutable-once-loaded state (see the registry pattern above)
+  — they do not belong in browser-visible state at all, not even a small
+  slice of them "for convenience".
 
 ## 5. Directory Structure and Separation of Concerns
 
@@ -290,6 +495,8 @@ def update_chart(department: str | None):
   Plotly figure out — testable without Dash or a browser.
 - **Constants** (`constants/ids.py`, formatting constants) centralise
   component IDs and shared literals.
+- **Config** (`config.py`) centralises environment variables and other
+  configurable values — see Section 7.
 - **Utils** (`utils/`) hold pure helper functions (date handling, filter
   normalisation, formatting) used by callbacks.
 - **Services/providers** (`services/`) own data access, caching, and
@@ -298,21 +505,108 @@ def update_chart(department: str | None):
   file that also builds a Plotly figure inline, is a sign a module is doing
   more than one job.
 
+**Good — a standardised layout for the whole app:**
+```
+app_src/
+  config.py         # env vars + config values — the only place that reads os.environ
+  state.py          # AppState dataclass — the shape of the one dcc.Store
+  dash_app.py       # entry point, routing, auth wiring
+  dashboards/       # layout only, one file per page
+    overview.py
+  callbacks/        # wiring only, one file per page
+    overview_callbacks.py
+  charts/           # pure chart-builder functions
+  constants/
+    ids.py          # centralised, namespaced component IDs
+  services/         # data providers/registry — lazy-loaded, patchable
+  utils/            # pure helper functions
+  tests/            # mirrors the structure above; run separately from
+                    # any CDK/infra tests — see Section 6
+```
+
 **Flag when:** a `callbacks/*.py` file makes a direct database/HTTP call
 instead of going through a provider/service module, or a `dashboards/*.py`
 layout file contains data transformation logic that belongs in `utils/` or a
 chart builder.
 
+### Extract repeated layout into named helper functions
+
+- If the same visual pattern (a KPI card, a filter row, a table wrapper)
+  appears more than once, build it with a function that takes the varying
+  parts as parameters, rather than copy-pasting the component tree each time.
+- Deeply nested inline layouts are hard to read at a glance: each extra level
+  of nesting makes it harder to see the overall shape of the page. Break
+  nesting into named local variables or small functions — one per logical
+  section — so the top-level layout reads like a table of contents rather
+  than a wall of nested calls.
+
+**Bad — the same card structure copy-pasted three times, deeply nested:**
+```python
+layout = html.Div([
+    html.Div([html.H4("Cases"), html.P(str(case_count)), html.Small("vs last month")], className="kpi-card"),
+    html.Div([html.H4("Assured"), html.P(str(assured_count)), html.Small("vs last month")], className="kpi-card"),
+    html.Div([html.H4("Spend"), html.P(str(spend)), html.Small("vs last month")], className="kpi-card"),
+])
+```
+
+**Good — one function, reused, and the top-level layout is easy to scan:**
+```python
+def build_kpi_card(title: str, value: str, comparison: str) -> html.Div:
+    return html.Div(
+        [html.H4(title), html.P(value), html.Small(comparison)],
+        className="kpi-card",
+    )
+
+
+layout = html.Div([
+    build_kpi_card("Cases", str(case_count), "vs last month"),
+    build_kpi_card("Assured", str(assured_count), "vs last month"),
+    build_kpi_card("Spend", str(spend), "vs last month"),
+])
+```
+
+**Flag when:** a near-identical component tree (three or more properties in
+common) is repeated inline more than once instead of being extracted into a
+function.
+
+### Flag long files as candidates for splitting
+
+- A single `callbacks/*.py` or `dashboards/*.py` file that has grown past
+  roughly 300 lines is a candidate for splitting — typically by page or by
+  logical section within a page, mirroring how `cdk_review.md` treats an
+  oversized stack file.
+- A long file makes it harder to find the one callback you need to change,
+  and increases the chance of two unrelated changes colliding in the same
+  file for no functional reason.
+
+**Bad — every page's callbacks piling up in one ever-growing file:**
+```
+callbacks/callbacks.py   # 900 lines: overview + case analysis + assessments
+```
+
+**Good — split by page, one file per logical section:**
+```
+callbacks/
+  overview_callbacks.py
+  case_analysis_callbacks.py
+  service_assessment_callbacks.py
+```
+
+**Flag when:** a `callbacks/*.py` or `dashboards/*.py` file exceeds roughly
+300 lines and visibly mixes callbacks/layout for more than one page or
+unrelated section.
+
 ## 6. Testing
 
 ### Test the pure functions directly, not by rendering Dash
 
-- Filter/state transformation functions, chart builders, and formatters
-  should have direct unit tests that call the function and assert on its
-  return value — no Dash app instance or browser required.
+- Filter/state transformation functions, chart builders, formatters, and the
+  data model/loading layer should have direct unit tests that call the
+  function and assert on its return value — no Dash app instance or browser
+  required for any of it.
 - Mirror the source layout in `tests/` (e.g. `tests/callbacks/`,
-  `tests/charts/`, `tests/utils/`) so the test for a given module is easy to
-  find.
+  `tests/charts/`, `tests/utils/`, `tests/services/`) so the test for a
+  given module is easy to find.
 - For a callback itself, test its contract by importing and calling the
   underlying function directly (Dash callback functions are plain Python
   functions once decorated; call them as such) rather than trying to spin up
@@ -320,8 +614,23 @@ chart builder.
   rendered interaction is genuinely the point of the test.
 
 **Flag when:** new pure logic (a filter normaliser, a data transform, a chart
-builder) ships with no direct unit test, especially when it replaces or
-changes existing tested behaviour without an updated test.
+builder, a loading/filtering function on the data model) ships with no
+direct unit test, especially when it replaces or changes existing tested
+behaviour without an updated test.
+
+### Keep app tests separate from CDK/infrastructure tests
+
+- If the repo also has CDK/infrastructure tests (typically a root `tests/`
+  directory), the Dash app's own tests should live in their own directory
+  (e.g. `app_src/tests/`), ideally with their own pytest configuration, not
+  interleaved with infra tests that need AWS mocking/`aws_cdk.assertions`.
+  They test different things at different speeds, and mixing them makes the
+  whole suite slower and noisier for whichever half you are not currently
+  working on.
+
+**Flag when:** an app test file imports `aws_cdk`/`aws_cdk.assertions`, or an
+infrastructure test imports Dash app internals — a sign the boundary between
+the two test suites has blurred.
 
 ## 7. Security and Configuration
 
@@ -333,11 +642,105 @@ changes existing tested behaviour without an updated test.
 - Authentication/authorisation middleware should wrap the whole app (e.g. a
   `before_request` hook or auth middleware applied once at app construction),
   not be re-implemented per route or per callback.
+- Role-based access checks (RBAC) should be centralised the same way — a
+  single `require_role()`/decorator or middleware layer that every protected
+  route or callback goes through, not an inline `if user.role == "admin"`
+  check repeated ad hoc wherever it happens to be needed. A scattered check
+  is easy to forget when a new protected page is added.
 - A health-check route (`/health`) should not require authentication or touch
   the data layer, so infra health checks are not blocked by auth or data
   outages.
 
-## 8. Anti-Patterns to Flag
+### Centralise environment variables and configuration in one module
+
+- All `os.getenv()`/`os.environ[...]` reads, and any other hardcoded
+  configuration values (default ports, timeouts, feature flags), should go
+  through a single `config.py` (or equivalent) rather than being read inline
+  and scattered across callbacks, services, and layouts.
+- A single config module makes every configurable value discoverable in one
+  place, gives you one spot to add validation or a documented default, and
+  means a missing required env var fails fast and obviously at startup
+  rather than surfacing as an unexplained `None` three layers into a
+  callback.
+
+**Bad — the same env var read differently in two different files:**
+```python
+# callbacks/overview_callbacks.py
+api_key = os.getenv("EXAMPLE_API_KEY")
+
+# services/example_client.py
+api_key = os.environ["EXAMPLE_API_KEY"]  # a typo here silently diverges
+```
+
+**Good — one module owns every env var and hardcoded default:**
+```python
+# config.py
+import os
+
+EXAMPLE_API_KEY = os.environ["EXAMPLE_API_KEY"]
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
+```
+```python
+# callbacks/overview_callbacks.py
+from config import EXAMPLE_API_KEY
+```
+
+**Flag when:** `os.getenv()`/`os.environ[...]` is called outside `config.py`
+(or the repo's equivalent single config module).
+
+## 8. Logging, Error Handling and Resilience
+
+### Use structured logging, and make failures diagnosable
+
+- Callback and service code should use Python's `logging` module, not
+  `print()` — the same standard already applied to Lambda handlers by the
+  CDK reviewer.
+- Log enough at the point of failure to diagnose it later: what was being
+  attempted, with what key inputs (never secrets), and what the actual
+  exception was — not just "an error occurred". A meaningful error message
+  names what failed and, where possible, why.
+- Do not swallow exceptions with a bare `except:`/`except Exception: pass`
+  inside a callback. Dash already turns an uncaught exception into a
+  generic client-side error with no detail; logging the real exception
+  server-side is the only way anyone can diagnose it afterwards.
+
+**Bad — the failure disappears with no trace of what went wrong:**
+```python
+@app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
+def update_chart(department):
+    try:
+        data = DATA_PROVIDER.get_dataframe()
+    except Exception:
+        return {{}}
+```
+
+**Good — logged with context, and the user sees a clear message:**
+```python
+logger = logging.getLogger(__name__)
+
+
+@app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
+def update_chart(department: str | None):
+    try:
+        data = DATA_PROVIDER.get_dataframe()
+    except DataUnavailableError:
+        logger.exception("No data available for department=%s", department)
+        return empty_chart_with_message("Data is temporarily unavailable")
+    return build_chart(filter_by_department(data, department))
+```
+
+### The app must not crash if data fails to load
+
+- This follows directly from Section 4's provider fallback strategy: if a
+  provider has no data at all yet (first deploy, upstream fully down, no
+  last-known-good snapshot), the callbacks reading it must render an
+  explicit empty/error state, not let an unhandled exception take the whole
+  page down.
+
+**Flag when:** a callback calls something that can fail (network, database,
+file access) with no exception handling and no logging on the failure path.
+
+## 9. Anti-Patterns to Flag
 
 - **Raw string component IDs** instead of a centralised ID enum/module
 - **Secrets or credentials in a `dcc.Store`, hidden input, or other
@@ -348,22 +751,47 @@ changes existing tested behaviour without an updated test.
   re-triggers), or vice versa (a control that should refresh but doesn't)
 - **Business logic written inline inside a `@callback`-decorated function**
   instead of a testable plain function
+- **Callbacks named generically** (`callback`, `cb1`, `on_change`) with no
+  indication of the state transition they perform
+- **Two or more callbacks writing to the same `Output`** (with or without
+  `allow_duplicate=True`) with no stated reason a single callback isn't possible
 - **`no_update`/`PreventUpdate` used with no comment explaining why**
 - **Feedback loops between two callbacks** with no `ctx.triggered_id` guard
 - **Direct database/API calls inside a frequently-firing callback** with no
-  caching/provider layer
+  shared provider
+- **A near-identical fetch/loader function duplicated per dataset** instead
+  of one function/provider parameterised by dataset
+- **A cache added with no stated evidence of the repeated cost it removes**,
+  or a cache key/TTL that makes it structurally unable to ever hit
+  (see Section 4)
+- **Two different caching mechanisms mixed in the same app**
+- **Data loaded eagerly at import time** (a module-level `pd.read_csv(...)`,
+  a provider that fetches inside `__init__`) instead of deferred to first use
 - **A full dataset or large record list written into `dcc.Store`** when a
   small filter/id would suffice
 - **Data-fetching or transformation logic inside a layout file**
   (`dashboards/`, `layouts.py`) instead of `utils/`/`services/`
-- **New filter/transform/chart-builder logic with no direct unit test**
+- **A near-identical layout component tree repeated inline** instead of a
+  helper function
+- **A `callbacks/*.py`/`dashboards/*.py` file that has grown past ~300 lines**
+  with no split
+- **New filter/transform/chart-builder/data-model logic with no direct unit test**
+- **App tests mixed with CDK/infrastructure tests** (importing `aws_cdk` in
+  an app test, or Dash internals in an infra test)
+- **`os.getenv()`/`os.environ[...]` called outside a single config module**
+- **RBAC/role checks implemented ad hoc per callback** instead of a shared,
+  centralised check
+- **`print()` used instead of `logging`**, or an exception swallowed with a
+  bare `except`/`except Exception: pass` and no logging
+- **A callback that can fail (network/DB/file) with no handling for the
+  failure path**, risking an unhandled exception crashing the page
 - **Pattern-matching callbacks used for a fixed, known set of components**
   where plain IDs would be simpler
 - **Clientside JS duplicating server-side business logic** instead of one
   being the source of truth
 - **Unresolved merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`)
 
-## 9. Do NOT Flag
+## 10. Do NOT Flag
 
 - AI agent/LLM-orchestration code embedded in the same app (knowledge-base
   search agents, MCP tool servers, RAG/graph retrieval) — out of scope for
@@ -372,9 +800,26 @@ changes existing tested behaviour without an updated test.
 - Docstring wording/completeness on callback or helper functions — the
   docstring reviewer owns that; this reviewer may still flag a *missing*
   test or a logic issue in the same function
+- Front-end accessibility (contrast ratios, screen-reader/keyboard-nav
+  behaviour) — this cannot be verified from a code diff; it needs a
+  rendering-based tool (axe-core/pa11y/Lighthouse CI) as a dedicated CI job,
+  tracked separately
+- Colour palette, font sizes, or data-table visual/design-system audits —
+  a visual-QA concern, not diff-reviewable without an established shared
+  design-tokens module to check against; tracked separately
+- Cross-device/cross-browser compatibility — needs real or emulated
+  browsers/devices (e.g. Playwright/BrowserStack), which this reviewer has
+  no way to exercise from a diff; tracked separately
+- Whether the Dash version, `gds-idea-app-kit` pin, or other dependencies are
+  "up to date" — verifying the current latest release needs a registry
+  lookup this reviewer cannot reliably perform; this is Dependabot's job, not
+  this reviewer's
+- Backend data-cleaning/deduplication/transformation correctness that is not
+  specific to Dash's reactive model (the same logic could equally sit in a
+  non-Dash Lambda) — the general code reviewer's remit
 - Choices that are valid but different from a personal preference (e.g.
-  `flask-caching` vs `diskcache` for background callbacks — both are valid
-  caching mechanisms)
+  `flask-caching` vs `diskcache` as the app's single chosen mechanism — pick
+  one, either is fine)
 - Formatting issues already handled by a linter
 - Pattern-matching callbacks used for a genuinely dynamic, variable-length
   set of components (e.g. a variable number of filter rows) — that is the
