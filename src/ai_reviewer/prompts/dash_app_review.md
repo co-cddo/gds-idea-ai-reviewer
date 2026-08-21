@@ -160,10 +160,14 @@ def value_or_no_update(desired, current):
 
 
 # callbacks/overview_callbacks.py
-@app.callback(Output(Ids.DEPARTMENT_DROPDOWN, "value"), Input(Ids.URL, "pathname"))
-def sync_department(pathname: str | None):
+@app.callback(
+    Output(Ids.DEPARTMENT_DROPDOWN, "value"),
+    Input(Ids.URL, "pathname"),
+    State(Ids.DEPARTMENT_DROPDOWN, "value"),
+)
+def sync_department(pathname: str | None, current_value: str | None):
     desired = department_for_path(pathname)
-    return value_or_no_update(desired, dash.callback_context.states.get("value"))
+    return value_or_no_update(desired, current_value)
 ```
 
 
