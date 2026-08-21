@@ -11,6 +11,11 @@ serves as both a human-readable reference and the automated reviewer's criteria.
 
 **Out of scope:** `cdk.out/`, `.venv/`, `node_modules/`, `__pycache__/`, `*.lock`.
 
+**Lambda handler review boundary:** for code under `lambda/**/*`, this review
+checks the `logging`-vs-`print()` convention and folder/naming layout only
+(see Directory Layout, Section 3) — not the handler's internal logic, error
+handling, or docstrings.
+
 ## 1. Configuration & Environment
 
 ### Use typed config objects, not raw context lookups
@@ -333,7 +338,7 @@ def handler(event, context):
     return result
 ```
 
-## 4. IAM Permissions
+## 4. IAM Permissions & Service Constructs
 
 ### Use .grant_*() methods over manual PolicyStatements
 
@@ -355,6 +360,50 @@ lambda_role.add_to_policy(iam.PolicyStatement(
 **Good:**
 ```python
 data_bucket.grant_read_write(lambda_role)
+```
+
+### Use CDK L2 constructs over L1 (`Cfn*`) where one exists
+
+- When a CDK L2 construct exists for a service (e.g. `aws_cdk.aws_s3.Bucket`,
+  `aws_cdk.aws_dynamodb.Table`), use it instead of the L1 `Cfn*` equivalent
+  (`CfnBucket`, `CfnTable`) or manual boto3 provisioning.
+- L2 constructs provide secure-by-default behaviour, the `.grant_*()` helper
+  methods above, and type-checked properties. L1 constructs are a raw 1:1
+  mapping to CloudFormation — every property must be spelled out manually,
+  with no defaults and no helper methods.
+- Exception: some services have no L2 wrapper (e.g. Athena `WorkGroup` only
+  has `CfnWorkGroup`). For those, the standard is simply "declare it via the
+  CDK L1 construct in the app," not "provision or configure it via boto3
+  calls at synth or deploy time" (see the "Live AWS API calls at synth time"
+  anti-pattern in Section 9).
+
+**Bad — hand-rolled L1 construct where an L2 exists:**
+```python
+bucket = s3.CfnBucket(
+    self, "DataBucket",
+    bucket_name=f"{{app_config.app_name}}-data-{{dep_config.environment.short_name}}",
+    versioning_configuration=s3.CfnBucket.VersioningConfigurationProperty(status="Enabled"),
+    bucket_encryption=s3.CfnBucket.BucketEncryptionProperty(
+        server_side_encryption_configuration=[
+            s3.CfnBucket.ServerSideEncryptionRuleProperty(
+                server_side_encryption_by_default=s3.CfnBucket.ServerSideEncryptionByDefaultProperty(
+                    sse_algorithm="AES256"
+                )
+            )
+        ]
+    ),
+)
+```
+
+**Good — L2 construct with sensible defaults:**
+```python
+bucket = s3.Bucket(
+    self, "DataBucket",
+    bucket_name=f"{{app_config.app_name}}-data-{{dep_config.environment.short_name}}",
+    versioned=True,
+    encryption=s3.BucketEncryption.S3_MANAGED,
+    removal_policy=removal,
+)
 ```
 
 ### Require sid and justification for any wildcard resource
@@ -769,6 +818,9 @@ def test_table_is_destroyed_in_dev(dev_template):
   same model (silent shape divergence between environments)
 - **Live AWS API calls at synth time** (boto3 calls in `app.py` that make
   `cdk synth` dependent on credentials/network)
+- **Hand-rolled L1 (`Cfn*`) constructs where an L2 construct exists** (e.g.
+  `CfnBucket` instead of `s3.Bucket`, `CfnTable` instead of `dynamodb.Table`)
+  — loses secure-by-default behaviour and the `.grant_*()` helpers
 - **Unresolved merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`)
 - **`cdk.out/` committed to git** (should be in `.gitignore`)
 - **No `.add_dependency()` calls** between stacks that have cross-stack
