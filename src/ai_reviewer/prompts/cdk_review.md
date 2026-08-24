@@ -540,6 +540,29 @@ def grant_read_athena(grantee: iam.IGrantable, *, workgroup_arn: str) -> None:
 - Construct IDs (the second positional argument to any CDK construct) must
   follow a consistent `{{project}}-{{PascalCaseResource}}` pattern.
 
+### Name stacks for what they do, not their architectural layer
+
+- The `{{function}}` segment of a stack name/ID must describe the stack's
+  specific purpose within the project, not a generic architectural category.
+- Generic layer names (`StorageStack`, `ProcessingStack`, `EverythingStack`)
+  say nothing about what the project actually does and don't distinguish one
+  gds-idea repo's stacks from another's.
+- Prefer a name tied to the concrete resource or workflow the stack owns
+  (e.g. a stack holding scraped-paper storage: `PaperStore`, not `Storage`;
+  a stack running an ingest pipeline: `PaperIngest`, not `Processing`).
+
+**Bad — generic architectural names:**
+```python
+storage = StorageStack(app, sid("StorageStack"), ...)
+processing = ProcessingStack(app, sid("ProcessingStack"), ...)
+```
+
+**Good — names tied to what the stack actually does:**
+```python
+paper_store = PaperStoreStack(app, sid("PaperStore"), ...)
+paper_ingest = PaperIngestStack(app, sid("PaperIngest"), ...)
+```
+
 ### Suffix physical resource names with the environment
 
 - Physical resource names (bucket_name, function_name, role_name, etc.) must
@@ -577,9 +600,9 @@ function_name = f"{{app_config.app_name}}-upload-processor-{{dep_config.environm
 **Bad — inconsistent, ad-hoc stack IDs:**
 ```python
 # Each stack picks a different convention
-StorageStack(app, "StorageStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)                     # no prefix, no phase
-ProcessingStack(app, "ai-pqs-ProcessingStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)        # prefix but no phase
-SecretsStack(app, f"{{project}}-secrets-stack-{{phase}}", app_config=app_config, deployment_config=dep_config, env=cdk_env)  # kebab-case, different style
+PaperStoreStack(app, "PaperStoreStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)                     # no prefix, no phase
+PaperIngestStack(app, "ai-pqs-PaperIngestStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)            # prefix but no phase
+ApiSecretsStack(app, f"{{project}}-api-secrets-stack-{{phase}}", app_config=app_config, deployment_config=dep_config, env=cdk_env)  # kebab-case, different style
 ```
 
 **Good — a single `StackId` helper enforces the pattern:**
@@ -619,10 +642,10 @@ cdk_env = cdk.Environment(
 dep_config = DeploymentConfig(cdk_env)  # environment resolved from the calling role
 sid = StackId.from_config(app_config, dep_config)
 
-# Every stack ID is now guaranteed consistent: "ai-pqs-StorageStack-dev"
-storage = StorageStack(app, sid("StorageStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
-secrets = SecretsStack(app, sid("SecretsStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
-processing = ProcessingStack(app, sid("ProcessingStack"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
+# Every stack ID is now guaranteed consistent: "ai-pqs-PaperStore-dev"
+paper_store = PaperStoreStack(app, sid("PaperStore"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
+api_secrets = ApiSecretsStack(app, sid("ApiSecrets"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
+paper_ingest = PaperIngestStack(app, sid("PaperIngest"), app_config=app_config, deployment_config=dep_config, env=cdk_env)
 ```
 
 ## 6. Tagging
@@ -825,6 +848,9 @@ def test_table_is_destroyed_in_dev(dev_template):
 - **`cdk.out/` committed to git** (should be in `.gitignore`)
 - **No `.add_dependency()` calls** between stacks that have cross-stack
   references
+- **Generic architectural stack names** (`StorageStack`, `ProcessingStack`,
+  `EverythingStack`) instead of a name describing the stack's actual function
+  within the project (e.g. `PaperStoreStack`, `PaperIngestStack`)
 - **Application code mixed into root level** instead of `app_src/` or `lambda/`
 - **Lambda source not in its own subfolder** under `lambda/`
 - **`print()` statements in Lambda handler code** — must use `logging`
