@@ -341,7 +341,7 @@ except Exception:
 try:
     process_row(row)
 except RowProcessingError:
-    logger.exception("Failed to process row %s", order.id)
+    logger.exception("Failed to process row %s", row.id)
     raise
 ```
 
