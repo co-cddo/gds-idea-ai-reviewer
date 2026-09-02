@@ -7,14 +7,15 @@ def _discovered_tool_names() -> set[str]:
 
 
 def test_get_all_toolsets_discovers_tools():
-    """Auto-discovery finds agent_context, cdk_review_guidance, and
-    dash_app_review_guidance.
+    """Auto-discovery finds agent_context, cdk_review_guidance,
+    dash_app_review_guidance, readme_review_guidance, and
+    docstring_review_guidance.
 
     code_review and docs_review are intentionally excluded (underscore-prefixed,
     pending breakout into focused tools) and should NOT be counted here.
     """
     toolsets = get_all_toolsets()
-    assert len(toolsets) >= 3
+    assert len(toolsets) >= 5
 
 
 def test_toolsets_have_expected_names():
@@ -25,9 +26,12 @@ def test_toolsets_have_expected_names():
         assert ts is not None
 
 
-def test_dash_app_review_tool_is_discovered():
-    """dash_app_review.py provides guidance for reviewing Plotly Dash apps."""
-    assert "dash_app_review_guidance" in _discovered_tool_names()
+def test_retired_tools_are_excluded():
+    """code_review_guidance and docs_review_guidance are retired (underscore-prefixed
+    modules pending breakout) and must not resurface as discovered tools."""
+    names = _discovered_tool_names()
+    for excluded in ("code_review_guidance", "docs_review_guidance"):
+        assert excluded not in names
 
 
 def test_every_guidance_tool_renders_its_prompt_template():
