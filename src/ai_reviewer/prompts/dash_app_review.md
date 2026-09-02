@@ -13,22 +13,12 @@ containing a Dash app entrypoint); any file importing `dash`, `dash.html`,
 for an app layout; any file containing `@app.callback`/`@callback`; clientside
 callback JS under `assets/`.
 
-**Out of scope:** AWS CDK/infrastructure that deploys the app (delegate to the CDK
-reviewer), general Python bugs/security not specific to Dash's reactive model
-(delegate to the code reviewer), docstring wording (delegate to the docstring
-reviewer), README files (delegate to the README reviewer), and any AI
-agent/LLM-orchestration code the app embeds (e.g. a knowledge-base search agent,
-MCP tool servers, RAG pipelines) — that is an agent-engineering concern, not a
-Dash reactive-system concern, even when it lives inside the same `app_src/`. Also
-out of scope: front-end accessibility audits, colour/design-system/typography
-audits, cross-device/cross-browser compatibility, and dependency/framework
-version freshness — see Section 10 for why and where each of those belongs.
-
-**How to review:** Work from the PR diff you already have from the code review.
-For each new or modified callback, identify its trigger (`Input`), its
-dependencies (`State`), its outputs, and the state it reads or writes. Judge
-whether that one callback represents a single, coherent state transition, not
-whether the file as a whole "looks like Dash code".
+**Out of scope:** AWS CDK/infrastructure that deploys the app; general Python
+bugs/security not specific to Dash's reactive model; docstring wording; README
+files; and any AI agent/LLM-orchestration code the app embeds (e.g. a
+knowledge-base search agent, MCP tool servers, RAG pipelines) — that is an
+agent-engineering concern, not a Dash reactive-system concern, even when it
+lives inside the same `app_src/`.
 
 ## 1. Component ID Conventions
 
@@ -125,6 +115,12 @@ logical value is tracked in more than one store/URL param without a stated
 precedence rule.
 
 ## 3. Callback Design
+
+**How to review:** Work from the PR diff you already have from the code review.
+For each new or modified callback, identify its trigger (`Input`), its
+dependencies (`State`), its outputs, and the state it reads or writes. Judge
+whether that one callback represents a single, coherent state transition, not
+whether the file as a whole "looks like Dash code".
 
 ### One callback, one coherent state transition
 
@@ -323,14 +319,14 @@ with no `ctx.triggered_id` guard to break the cycle.
   a callback that fires often (typing, filter changes) should go through a
   single provider/service object instead of calling the data source directly
   each time — see "One function per resource" below.
-- A data provider should have a clear refresh strategy (e.g. scheduled
-  refresh, retry with backoff, and a last-known-good fallback on failure) so
-  a transient upstream failure does not take down every page that reads it.
-  If a provider has never successfully loaded at all (e.g. first deploy, or
-  the upstream source is fully unavailable with no last-known-good snapshot
-  yet), callbacks reading it must handle that explicitly — an empty state or
-  a clear on-page message — rather than letting an unhandled exception crash
-  the callback and take the page down (see Section 8).
+- A data provider's refresh strategy — whether and how often it reloads
+  from source — should be a deliberate, stated decision; see "State the
+  app's data-refresh strategy explicitly" below. If a provider has never
+  successfully loaded at all (e.g. first deploy, or the upstream source is
+  fully unavailable with no last-known-good snapshot yet), callbacks
+  reading it must handle that explicitly — an empty state or a clear
+  on-page message — rather than letting an unhandled exception crash the
+  callback and take the page down (see Section 8).
 - Long-running work (multi-second API calls, LLM calls, large exports) should
   use Dash's background-callback mechanism when the app already has one
   configured, rather than blocking the request/response cycle synchronously.
@@ -345,7 +341,9 @@ with no `ctx.triggered_id` guard to break the cycle.
   name (a small registry keyed by dataset name) is easier to reason about
   and test than one bespoke loader function per dataset, and gives you one
   place to add retry/fallback/refresh behaviour that every dataset gets for
-  free.
+  free. Declare each dataset once in a manifest — source, optional
+  preprocessing — rather than adding a new method to a registry class per
+  dataset; adding a dataset then becomes one manifest entry, not new code.
 
 **Bad — a near-identical loader duplicated per dataset:**
 ```python
@@ -354,25 +352,65 @@ def get_spend_data(): ...   # with the dataset name as the only real difference
 def get_assurance_data(): ...
 ```
 
-**Good — one provider, parameterised by dataset (construction does no I/O —
-see "Do not eagerly load data on import" below; datasets are only fetched
-when a callback actually asks for one):**
+**Good — one manifest declares every dataset; one registry loads any of them
+generically (construction does no I/O — see "Do not eagerly load data on
+import" below; datasets are only fetched when a callback actually asks for
+one):**
 ```python
+# datasets.py — the single manifest for every dataset the app loads
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import pandas as pd
+
+
+@dataclass
+class Dataset:
+    """Declares one dataset the registry knows how to load."""
+
+    name: str
+    source: str  # a table name, S3 key, file path — whatever fetch() expects
+    preprocess: Callable[[pd.DataFrame], pd.DataFrame] | None = None
+
+
+DATASETS = [
+    Dataset(name="cases", source="cases_table"),
+    Dataset(name="spend", source="spend_table", preprocess=normalise_spend_columns),
+    Dataset(name="assurance", source="assurance_table"),
+]
+
+
+# services/dataset_registry.py — one generic loader, driven by the manifest
 class DatasetRegistry:
-    """Loads and holds the app's datasets, keyed by name."""
+    """Loads and holds every dataset declared in DATASETS, keyed by name."""
 
-    def get_dataframe(self, dataset: str) -> pd.DataFrame: ...
+    def __init__(self, datasets: list[Dataset] = DATASETS):
+        self._datasets = {{d.name: d for d in datasets}}
+        self._cache: dict[str, pd.DataFrame] = {{}}
+
+    def get_dataframe(self, name: str) -> pd.DataFrame:
+        if name not in self._cache:
+            self._cache[name] = self._load(self._datasets[name])
+        return self._cache[name]
+
+    def _load(self, dataset: Dataset) -> pd.DataFrame:
+        frame = fetch_from_source(dataset.source)
+        return dataset.preprocess(frame) if dataset.preprocess else frame
 
 
-DATASETS = DatasetRegistry()  # safe to import — no dataset is fetched yet
+DATASET_REGISTRY = DatasetRegistry()  # safe to import — no dataset is fetched yet
 
 
 # callbacks/overview_callbacks.py
 @app.callback(Output(Ids.CHART, "figure"), Input(Ids.DEPARTMENT_DROPDOWN, "value"))
 def update_chart(department: str | None):
-    cases = DATASETS.get_dataframe("cases")
+    cases = DATASET_REGISTRY.get_dataframe("cases")
     return build_chart(filter_by_department(cases, department))
 ```
+
+This shape also makes testing easier: a test patches `DatasetRegistry._load`
+once to return a fixture, rather than patching a different private loader
+per dataset.
 
 ### Caching is not the default — add it only with evidence it earns its cost
 
@@ -445,10 +483,18 @@ DATA = pd.read_csv("s3://bucket/data.csv")  # runs at import time; every test
                                              # real S3 access to even start
 ```
 
-**Good — construction does no I/O; the load is deferred and patchable:**
+**Good — construction does no I/O; the load is deferred, patchable, and its
+refresh rationale is stated (see "State the app's data-refresh strategy
+explicitly" below):**
 ```python
 # services/data_provider.py
 class DataProvider:
+    """Loads data.csv once per container lifetime.
+
+    A scheduled daily redeploy restarts the container and is what refreshes
+    this data — there is no in-process refresh here by design.
+    """
+
     def __init__(self):
         self._data: pd.DataFrame | None = None  # nothing loaded yet
 
@@ -475,6 +521,80 @@ def test_get_dataframe_returns_loaded_data(monkeypatch):
 directly (not behind a function/method), or a provider's `__init__` calls
 its own load method eagerly instead of deferring it to first use.
 
+### State the app's data-refresh strategy explicitly
+
+- A provider that loads its data once and never reloads it only ever
+  reflects a fresh source after the app's next deploy — many apps do this
+  by accident, not by design. Decide and record which of the following
+  applies; treat "nobody decided" as a bug in its own right.
+- **In-process scheduled refresh** — the provider tracks a refresh boundary
+  (e.g. a daily UTC time) and reloads lazily on the next read once that
+  boundary has passed, keeping the last successfully loaded snapshot if the
+  reload fails.
+- **Redeploy-triggered refresh** — the provider loads once per container
+  lifetime by design, and an external scheduled process (e.g. a scheduled
+  redeploy) restarts the container to pick up new source data. This is only
+  a deliberate decision, not an accident, when the provider's own
+  docstring/comment states what actually keeps the data fresh — see the
+  `DataProvider` example above, whose docstring states exactly this.
+- Either is acceptable. What is not acceptable is a provider that loads
+  once with no scheduling and no stated rationale for either.
+- This check stops at what the provider's own code says about itself.
+  Confirming a redeploy schedule genuinely exists is not something a
+  Dash-app diff can show.
+
+**Bad — loads once, with nothing indicating whether that's ever revisited:**
+```python
+# services/data_provider.py
+class DataProvider:
+    def __init__(self):
+        self._data: pd.DataFrame | None = None
+
+    def get_dataframe(self) -> pd.DataFrame:
+        if self._data is None:
+            self._data = self._load()
+        return self._data
+
+    def _load(self) -> pd.DataFrame:
+        return pd.read_csv("s3://bucket/data.csv")
+
+
+DATA_PROVIDER = DataProvider()  # only ever reflects data.csv as it was the
+                                 # first time this container started
+```
+
+**Good — in-process scheduled refresh, re-checked lazily on read:**
+```python
+# services/data_provider.py
+class DataProvider:
+    def __init__(self, refresh_interval: timedelta = timedelta(hours=24)):
+        self._data: pd.DataFrame | None = None
+        self._loaded_at: datetime | None = None
+        self._refresh_interval = refresh_interval
+
+    def get_dataframe(self) -> pd.DataFrame:
+        due = (
+            self._loaded_at is None
+            or datetime.now(UTC) - self._loaded_at > self._refresh_interval
+        )
+        if due:
+            try:
+                self._data = self._load()
+                self._loaded_at = datetime.now(UTC)
+            except DataUnavailableError:
+                logger.exception("Refresh failed; keeping last known good data.")
+        return self._data
+
+    def _load(self) -> pd.DataFrame:
+        return pd.read_csv("s3://bucket/data.csv")
+```
+
+**Flag when:** a data provider's `_load`/equivalent is only ever called once
+(at construction or on first use) with no code path that reloads it later,
+and neither its docstring nor a nearby comment states why a single load is
+sufficient — a silent single-load is indistinguishable from a provider
+nobody thought to make refreshable at all.
+
 ### Avoid large or duplicated payloads in `dcc.Store`
 
 - `dcc.Store` serialises to JSON and round-trips through the browser on every
@@ -498,9 +618,11 @@ its own load method eagerly instead of deferring it to first use.
 - **Chart/figure builders** (`charts/`) are pure functions: data in, a
   Plotly figure out — testable without Dash or a browser.
 - **Constants** (`constants/ids.py`, formatting constants) centralise
-  component IDs and shared literals.
-- **Config** (`config.py`) centralises environment variables and other
-  configurable values — see Section 7.
+  component IDs and shared literals, and are imported freely by layout,
+  callback, and chart-builder files alike.
+- **Config** (`config.py`) is the only place that reads the environment or
+  external configuration — see "Separate constants from configuration" in
+  Section 7.
 - **Utils** (`utils/`) hold pure helper functions (date handling, filter
   normalisation, formatting) used by callbacks.
 - **Services/providers** (`services/`) own data access, caching, and
@@ -577,8 +699,7 @@ function.
 
 - A single `callbacks/*.py` or `dashboards/*.py` file that has grown past
   roughly 300 lines is a candidate for splitting — typically by page or by
-  logical section within a page, mirroring how `cdk_review.md` treats an
-  oversized stack file.
+  logical section within a page.
 - A long file makes it harder to find the one callback you need to change,
   and increases the chance of two unrelated changes colliding in the same
   file for no functional reason.
@@ -632,9 +753,9 @@ behaviour without an updated test.
   whole suite slower and noisier for whichever half you are not currently
   working on.
 
-**Flag when:** an app test file imports `aws_cdk`/`aws_cdk.assertions`, or an
-infrastructure test imports Dash app internals — a sign the boundary between
-the two test suites has blurred.
+**Flag when:** an `app_src/` test file imports `aws_cdk`/`aws_cdk.assertions`,
+or an infrastructure test imports Dash app internals — a sign the boundary
+between the two test suites has blurred.
 
 ## 7. Security and Configuration
 
@@ -692,13 +813,54 @@ from config import EXAMPLE_API_KEY
 **Flag when:** `os.getenv()`/`os.environ[...]` is called outside `config.py`
 (or the repo's equivalent single config module).
 
+### Separate constants from configuration
+
+- Constants (component IDs, formatting strings, static lookup values) and
+  configuration (anything that varies by environment or comes from outside
+  the codebase — API keys, feature flags, ports, timeouts) are different
+  things, and belong in different modules.
+- A constant is imported freely wherever it's needed — `constants/ids.py`,
+  layout files, callback files, chart builders — with no environment
+  dependency attached. A config value is read once, in `config.py`, and
+  imported from there; nothing else calls `os.getenv()`/`os.environ[...]`
+  directly (see "Centralise environment variables..." above).
+- Do not put a static/component-ID value in `config.py` just because it feels
+  "configuration-adjacent", and do not read an environment variable inside
+  `constants/*.py` "for convenience" — each module should only ever contain
+  the kind of value that belongs to it under this split.
+
+**Bad — a static ID and an environment-derived value sharing a module, so
+it's unclear which import is safe to reuse without side effects:**
+```python
+# constants/ids.py
+import os
+
+START_DATE_FILTER = "OverviewPage-START_DATE"
+FEATURE_FLAG_NEW_CHART = os.getenv("FEATURE_FLAG_NEW_CHART", "false") == "true"
+```
+
+**Good — the static ID stays in constants; the environment read stays in config:**
+```python
+# constants/ids.py
+START_DATE_FILTER = "OverviewPage-START_DATE"
+```
+```python
+# config.py
+import os
+
+FEATURE_FLAG_NEW_CHART = os.getenv("FEATURE_FLAG_NEW_CHART", "false") == "true"
+```
+
+**Flag when:** a `constants/*.py` module reads an environment variable or
+external config, or `config.py` defines a static value with no
+environment/external source behind it.
+
 ## 8. Logging, Error Handling and Resilience
 
 ### Use structured logging, and make failures diagnosable
 
 - Callback and service code should use Python's `logging` module, not
-  `print()` — the same standard already applied to Lambda handlers by the
-  CDK reviewer.
+  `print()`.
 - Log enough at the point of failure to diagnose it later: what was being
   attempted, with what key inputs (never secrets), and what the actual
   exception was — not just "an error occurred". A meaningful error message
@@ -741,6 +903,31 @@ def update_chart(department: str | None):
   explicit empty/error state, not let an unhandled exception take the whole
   page down.
 
+**Good — an explicit empty state at component level, and a page-level
+fallback when the whole page's data is unavailable:**
+```python
+def build_kpi_card_or_placeholder(title: str, value: str | None) -> html.Div:
+    if value is None:
+        return html.Div(
+            [html.H4(title), html.P("No data available")],
+            className="kpi-card kpi-card--empty",
+        )
+    return build_kpi_card(title, value, comparison="vs last month")
+
+
+@app.callback(Output(Ids.PAGE_CONTENT, "children"), Input(Ids.URL, "pathname"))
+def display_page(pathname: str | None):
+    try:
+        data = DATA_PROVIDER.get_dataframe()
+    except DataUnavailableError:
+        logger.exception("No data available while rendering %s", pathname)
+        return html.Div(
+            "This page could not load its data. Try again shortly.",
+            className="page-error",
+        )
+    return build_page_layout(data)
+```
+
 **Flag when:** a callback calls something that can fail (network, database,
 file access) with no exception handling and no logging on the failure path.
 
@@ -771,6 +958,9 @@ file access) with no exception handling and no logging on the failure path.
 - **Two different caching mechanisms mixed in the same app**
 - **Data loaded eagerly at import time** (a module-level `pd.read_csv(...)`,
   a provider that fetches inside `__init__`) instead of deferred to first use
+- **A data provider that loads once with no scheduled refresh and no stated
+  rationale** for why a single load is sufficient (e.g. a documented
+  redeploy-triggered refresh)
 - **A full dataset or large record list written into `dcc.Store`** when a
   small filter/id would suffice
 - **Data-fetching or transformation logic inside a layout file**
@@ -783,6 +973,8 @@ file access) with no exception handling and no logging on the failure path.
 - **App tests mixed with CDK/infrastructure tests** (importing `aws_cdk` in
   an app test, or Dash internals in an infra test)
 - **`os.getenv()`/`os.environ[...]` called outside a single config module**
+- **A static/component-ID constant defined in `config.py`, or an
+  environment/external config value read inside `constants/*.py`**
 - **RBAC/role checks implemented ad hoc per callback** instead of a shared,
   centralised check
 - **`print()` used instead of `logging`**, or an exception swallowed with a
@@ -797,37 +989,12 @@ file access) with no exception handling and no logging on the failure path.
 
 ## 10. Do NOT Flag
 
-- AI agent/LLM-orchestration code embedded in the same app (knowledge-base
-  search agents, MCP tool servers, RAG/graph retrieval) — out of scope for
-  this reviewer; that is an agent-engineering concern
-- CDK/infrastructure that deploys the app — the CDK reviewer owns that
-- Docstring wording/completeness on callback or helper functions — the
-  docstring reviewer owns that; this reviewer may still flag a *missing*
-  test or a logic issue in the same function
-- Front-end accessibility (contrast ratios, screen-reader/keyboard-nav
-  behaviour) — this cannot be verified from a code diff; it needs a
-  rendering-based tool (axe-core/pa11y/Lighthouse CI) as a dedicated CI job,
-  tracked separately
-- Colour palette, font sizes, or data-table visual/design-system audits —
-  a visual-QA concern, not diff-reviewable without an established shared
-  design-tokens module to check against; tracked separately
-- Cross-device/cross-browser compatibility — needs real or emulated
-  browsers/devices (e.g. Playwright/BrowserStack), which this reviewer has
-  no way to exercise from a diff; tracked separately
-- Whether the Dash version, `gds-idea-app-kit` pin, or other dependencies are
-  "up to date" — verifying the current latest release needs a registry
-  lookup this reviewer cannot reliably perform; this is Dependabot's job, not
-  this reviewer's
 - Backend data-cleaning/deduplication/transformation correctness that is not
   specific to Dash's reactive model (the same logic could equally sit in a
-  non-Dash Lambda) — the general code reviewer's remit
-- Choices that are valid but different from a personal preference (e.g.
-  `flask-caching` vs `diskcache` as the app's single chosen mechanism — pick
-  one, either is fine)
+  non-Dash Lambda) — ignore anything not tied to how Dash owns state or
+  wires callbacks, even if it happens to live under `app_src/`
 - Formatting issues already handled by a linter
 - Pattern-matching callbacks used for a genuinely dynamic, variable-length
   set of components (e.g. a variable number of filter rows) — that is the
   correct tool for that job
-- If there are no Dash application files added or modified in this PR,
-  report that the Dash app review found nothing to flag — that is a valid,
-  expected outcome
+</content>
