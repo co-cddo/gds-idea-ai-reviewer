@@ -28,4 +28,6 @@ def get_github_server(github_token: str) -> MCPToolset:
         ],
         env={"GITHUB_PERSONAL_ACCESS_TOKEN": github_token},
     )
-    return MCPToolset(transport)
+    # pydantic-ai defaults MCPToolset's init handshake timeout to 5s, which is too
+    # tight for a cold `docker pull` of the MCP server image
+    return MCPToolset(transport, init_timeout=60)
