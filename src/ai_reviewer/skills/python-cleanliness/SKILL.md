@@ -1,6 +1,12 @@
+---
+name: python-cleanliness
+description: Review general Python code cleanliness: function design, naming and constants, layering, error handling, and code structure, independent of any specific framework. Use when writing or reviewing Python code for readability and maintainability.
+metadata:
+  ai_reviewer_tool: python_cleanliness_guidance
+---
+
 # Python Cleanliness Standards
 
-Target: {repository} / PR #{pr_number}
 
 This document defines general Python code-quality and cleanliness standards for
 gds-idea projects, independent of any specific framework or domain. It serves as
@@ -404,7 +410,7 @@ def build_report(report: pd.DataFrame) -> Report:
 # tests/test_report.py
 @pytest.fixture
 def report_fixture() -> pd.DataFrame:
-    return pd.DataFrame({{"amount": [100, 200, 50]}})
+    return pd.DataFrame({"amount": [100, 200, 50]})
 
 
 def test_build_report(report_fixture):

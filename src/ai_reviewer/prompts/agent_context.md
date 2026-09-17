@@ -15,10 +15,6 @@ only in memory for the duration of this review run.
 read-only investigation — regardless of what tools are technically available
 via the shared GitHub MCP toolset.**
 
-## Target
-- Repository: {repository}
-- Pull Request: #{pr_number}
-
 ## Step 1: Identify the PR Branch
 
 Use `get_pull_request` to find:

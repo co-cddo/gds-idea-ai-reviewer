@@ -1,8 +1,12 @@
+---
+name: docstring-review
+description: Review Python docstrings for presence, quality, and accuracy, and catch docstrings that narrate edit history or cite ticket/PR numbers instead of describing current behaviour. Use when writing or reviewing docstrings on public Python functions, classes, or modules.
+metadata:
+  ai_reviewer_tool: docstring_review_guidance
+---
+
 # Documentation Review Instructions
 
-## Target
-- Repository: {repository}
-- Pull Request: #{pr_number}
 
 ## Scope
 

@@ -1,6 +1,12 @@
+---
+name: dash-app-review
+description: Review Plotly Dash applications for component ID conventions, state ownership, callback design, data loading/performance, directory structure, testing, and security/config centralisation. Use when writing or reviewing Dash app layouts, callbacks, or data providers.
+metadata:
+  ai_reviewer_tool: dash_app_review_guidance
+---
+
 # Dash Application Review Standards
 
-Target: {repository} / PR #{pr_number}
 
 This document defines standards for Plotly Dash applications in gds-idea projects.
 It serves as both a human-readable reference and the automated reviewer's criteria.
@@ -179,7 +185,7 @@ def save_filters(search_text, department):
     cleaned = search_text.strip().lower() if search_text else None
     departments = [department] if department else []
     # ... 40 more lines of ad hoc cleaning inline ...
-    return {{"search": cleaned, "departments": departments}}
+    return {"search": cleaned, "departments": departments}
 ```
 
 **Good — thin callback, pure function does the work, correct Input/State:**
@@ -197,10 +203,10 @@ def normalise_search_text(value: str | None) -> str | None:
 )
 def save_filters(search_text: str | None, department: str | None) -> dict:
     """Persist the current search/department filters into app state."""
-    return {{
+    return {
         "search": normalise_search_text(search_text),
         "departments": [department] if department else [],
-    }}
+    }
 ```
 
 ### Name callbacks for the state transition they perform, not the trigger
@@ -301,7 +307,7 @@ with no `ctx.triggered_id` guard to break the cycle.
 
 ### Use pattern-matching and clientside callbacks only where they earn their keep
 
-- Pattern-matching callbacks (`{{"type": "filter", "index": ALL}}`) are
+- Pattern-matching callbacks (`{"type": "filter", "index": ALL}`) are
   appropriate when the set of components is genuinely dynamic (a variable
   number of filter rows). Do not reach for them for a fixed, known set of
   components — plain IDs are simpler to read and type-check.
@@ -385,8 +391,8 @@ class DatasetRegistry:
     """Loads and holds every dataset declared in DATASETS, keyed by name."""
 
     def __init__(self, datasets: list[Dataset] = DATASETS):
-        self._datasets = {{d.name: d for d in datasets}}
-        self._cache: dict[str, pd.DataFrame] = {{}}
+        self._datasets = {d.name: d for d in datasets}
+        self._cache: dict[str, pd.DataFrame] = {}
 
     def get_dataframe(self, name: str) -> pd.DataFrame:
         if name not in self._cache:
@@ -513,7 +519,7 @@ DATA_PROVIDER = DataProvider()  # safe to import anywhere — no I/O yet
 # tests/services/test_data_provider.py — patch the load, not the network
 def test_get_dataframe_returns_loaded_data(monkeypatch):
     provider = DataProvider()
-    monkeypatch.setattr(provider, "_load", lambda: pd.DataFrame({{"a": [1]}}))
+    monkeypatch.setattr(provider, "_load", lambda: pd.DataFrame({"a": [1]}))
     assert list(provider.get_dataframe()["a"]) == [1]
 ```
 
@@ -877,7 +883,7 @@ def update_chart(department):
     try:
         data = DATA_PROVIDER.get_dataframe()
     except Exception:
-        return {{}}
+        return {}
 ```
 
 **Good — logged with context, and the user sees a clear message:**

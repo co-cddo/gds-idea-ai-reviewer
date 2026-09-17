@@ -4,7 +4,7 @@ from ai_reviewer.tools._tool_template import make_review_tool
 
 toolset = make_review_tool(
     name="dash_app_review_guidance",
-    prompt_file="dash_app_review.md",
+    prompt_file="dash-app-review/SKILL.md",
     description=(
         "Get instructions for reviewing Plotly Dash applications. "
         "Call this tool when the PR touches files importing `dash`, "

@@ -4,7 +4,7 @@ from ai_reviewer.tools._tool_template import make_review_tool
 
 toolset = make_review_tool(
     name="cdk_review_guidance",
-    prompt_file="cdk_review.md",
+    prompt_file="cdk-review/SKILL.md",
     description=(
         "Get instructions for reviewing AWS CDK infrastructure code, "
         "including Lambda/app deployment conventions (folder layout, "

@@ -1,6 +1,12 @@
+---
+name: cdk-review
+description: Review AWS CDK infrastructure code (stacks, IAM, config, Lambda handlers) against gds-idea conventions: typed config objects, stack structure, directory layout, naming, tagging, and removal policy. Use when writing or reviewing AWS CDK apps, stacks, or constructs in Python.
+metadata:
+  ai_reviewer_tool: cdk_review_guidance
+---
+
 # CDK Infrastructure Review Standards
 
-Target: {repository} / PR #{pr_number}
 
 This document defines CDK infrastructure standards for gds-idea projects. It
 serves as both a human-readable reference and the automated reviewer's criteria.
@@ -49,7 +55,7 @@ account = app.node.try_get_context("prod_account_number")
 ```python
 # No type safety: a typo like "athenaQueryBucket" silently returns None and
 # fails much later. The str() cast hides the missing-key problem until runtime.
-environments_ctx = app.node.try_get_context("environments") or {{}}
+environments_ctx = app.node.try_get_context("environments") or {}
 env_cfg = environments_ctx.get(deployment_env)
 athena_queries_bucket_name = str(env_cfg["athenaQueriesBucket"])
 ```
@@ -134,9 +140,9 @@ environment = DeploymentEnvironment.from_cdk_env(cdk_env)
 
 env_config = EnvironmentConfig(
     environment=environment.short_name,
-    glue_database_name=f"my-app-db-{{environment.short_name}}",
-    athena_workgroup_name=f"my-app-wg-{{environment.short_name}}",
-    athena_queries_bucket=f"my-app-athena-queries-{{environment.short_name}}",
+    glue_database_name=f"my-app-db-{environment.short_name}",
+    athena_workgroup_name=f"my-app-wg-{environment.short_name}",
+    athena_queries_bucket=f"my-app-athena-queries-{environment.short_name}",
     datasets=[...],
 )
 ```
@@ -191,7 +197,7 @@ resources=["arn:aws:kms:eu-west-2:588077357019:key/dc126e48-..."]
 from gds_idea_cdk_constructs import DeploymentEnvironment
 
 resources=[
-    f"arn:aws:kms:{{dep_config.cdk_env.region}}:{{DeploymentEnvironment.PRODUCTION.value}}:key/{{config.kms_key_id}}"
+    f"arn:aws:kms:{dep_config.cdk_env.region}:{DeploymentEnvironment.PRODUCTION.value}:key/{config.kms_key_id}"
 ]
 ```
 
@@ -317,9 +323,9 @@ tests/
 **Bad:**
 ```python
 def handler(event, context):
-    print(f"Processing event: {{json.dumps(event)}}")
+    print(f"Processing event: {json.dumps(event)}")
     result = process(event)
-    print(f"Result: {{result}}")
+    print(f"Result: {result}")
     return result
 ```
 
@@ -353,7 +359,7 @@ def handler(event, context):
 ```python
 lambda_role.add_to_policy(iam.PolicyStatement(
     actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-    resources=[f"arn:aws:s3:::{{bucket_name}}", f"arn:aws:s3:::{{bucket_name}}/*"],
+    resources=[f"arn:aws:s3:::{bucket_name}", f"arn:aws:s3:::{bucket_name}/*"],
 ))
 ```
 
@@ -381,7 +387,7 @@ data_bucket.grant_read_write(lambda_role)
 ```python
 bucket = s3.CfnBucket(
     self, "DataBucket",
-    bucket_name=f"{{app_config.app_name}}-data-{{dep_config.environment.short_name}}",
+    bucket_name=f"{app_config.app_name}-data-{dep_config.environment.short_name}",
     versioning_configuration=s3.CfnBucket.VersioningConfigurationProperty(status="Enabled"),
     bucket_encryption=s3.CfnBucket.BucketEncryptionProperty(
         server_side_encryption_configuration=[
@@ -399,7 +405,7 @@ bucket = s3.CfnBucket(
 ```python
 bucket = s3.Bucket(
     self, "DataBucket",
-    bucket_name=f"{{app_config.app_name}}-data-{{dep_config.environment.short_name}}",
+    bucket_name=f"{app_config.app_name}-data-{dep_config.environment.short_name}",
     versioned=True,
     encryption=s3.BucketEncryption.S3_MANAGED,
     removal_policy=removal,
@@ -538,11 +544,11 @@ def grant_read_athena(grantee: iam.IGrantable, *, workgroup_arn: str) -> None:
 ### Use a consistent construct ID prefix pattern
 
 - Construct IDs (the second positional argument to any CDK construct) must
-  follow a consistent `{{project}}-{{PascalCaseResource}}` pattern.
+  follow a consistent `{project}-{PascalCaseResource}` pattern.
 
 ### Name stacks for what they do, not their architectural layer
 
-- The `{{function}}` segment of a stack name/ID must describe the stack's
+- The `{function}` segment of a stack name/ID must describe the stack's
   specific purpose within the project, not a generic architectural category.
 - Generic layer names (`StorageStack`, `ProcessingStack`, `EverythingStack`)
   say nothing about what the project actually does and don't distinguish one
@@ -567,7 +573,7 @@ paper_ingest = PaperIngestStack(app, sid("PaperIngest"), ...)
 
 - Physical resource names (bucket_name, function_name, role_name, etc.) must
   include an environment/phase suffix when deploying to a shared AWS account:
-  `{{project}}-{{resource}}-{{phase}}`.
+  `{project}-{resource}-{phase}`.
 - Without an environment suffix, deploying both dev and prod to the same
   account causes name collisions.
 
@@ -583,14 +589,14 @@ from gds_idea_cdk_constructs import AppConfig, DeploymentConfig
 app_config = AppConfig.from_pyproject()
 dep_config = DeploymentConfig(cdk_env)
 
-function_name = f"{{app_config.app_name}}-upload-processor-{{dep_config.environment.short_name}}"
+function_name = f"{app_config.app_name}-upload-processor-{dep_config.environment.short_name}"
 # produces: "my-app-upload-processor-dev"
 ```
 
 ### Derive stack IDs from a single consistent pattern
 
 - Stack IDs should be derived from a consistent utility or pattern (e.g.
-  `f"{{app_name}}-{{StackName}}-{{phase}}"` or a `StackId` helper), not
+  `f"{app_name}-{StackName}-{phase}"` or a `StackId` helper), not
   ad-hoc strings that vary in style across `app.py`.
 - Without a shared utility, each stack instantiation risks a different
   convention (no prefix, no phase, different casing), and renaming the
@@ -602,7 +608,7 @@ function_name = f"{{app_config.app_name}}-upload-processor-{{dep_config.environm
 # Each stack picks a different convention
 PaperStoreStack(app, "PaperStoreStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)                     # no prefix, no phase
 PaperIngestStack(app, "ai-pqs-PaperIngestStack", app_config=app_config, deployment_config=dep_config, env=cdk_env)            # prefix but no phase
-ApiSecretsStack(app, f"{{project}}-api-secrets-stack-{{phase}}", app_config=app_config, deployment_config=dep_config, env=cdk_env)  # kebab-case, different style
+ApiSecretsStack(app, f"{project}-api-secrets-stack-{phase}", app_config=app_config, deployment_config=dep_config, env=cdk_env)  # kebab-case, different style
 ```
 
 **Good — a single `StackId` helper enforces the pattern:**
@@ -623,7 +629,7 @@ class StackId:
         return cls(project=app_config.app_name, phase=dep_config.environment.short_name)
 
     def __call__(self, stack_name: str) -> str:
-        return f"{{self.project}}-{{stack_name}}-{{self.phase}}"
+        return f"{self.project}-{stack_name}-{self.phase}"
 ```
 
 ```python
@@ -749,10 +755,10 @@ def test_environment_config_is_valid(environment: str):
     # environments satisfy the same model.
     env_config = EnvironmentConfig(
         environment=environment,
-        glue_database_name=f"my-app-db-{{environment}}",
-        athena_workgroup_name=f"my-app-wg-{{environment}}",
-        athena_queries_bucket=f"my-app-athena-queries-{{environment}}",
-        datasets=[DatasetConfig(table_name="papers", s3_bucket_name=f"my-app-papers-{{environment}}", s3_prefix="raw/")],
+        glue_database_name=f"my-app-db-{environment}",
+        athena_workgroup_name=f"my-app-wg-{environment}",
+        athena_queries_bucket=f"my-app-athena-queries-{environment}",
+        datasets=[DatasetConfig(table_name="papers", s3_bucket_name=f"my-app-papers-{environment}", s3_prefix="raw/")],
     )
     assert env_config.environment == environment
 ```
@@ -782,38 +788,38 @@ def prod_template():
 
 # Test IAM scoping
 def test_lambda_role_has_scoped_permissions(dev_template):
-    dev_template.has_resource_properties("AWS::IAM::Policy", {{
-        "PolicyDocument": {{
+    dev_template.has_resource_properties("AWS::IAM::Policy", {
+        "PolicyDocument": {
             "Statement": assertions.Match.array_with([
-                assertions.Match.object_like({{
+                assertions.Match.object_like({
                     "Action": "secretsmanager:GetSecretValue",
                     "Resource": assertions.Match.string_like_regexp(r"arn:aws:secretsmanager:.*"),
-                }})
+                })
             ])
-        }}
-    }})
+        }
+    })
 
 # Test tags
 def test_table_has_resource_type_tag(dev_template):
-    dev_template.has_resource_properties("AWS::DynamoDB::Table", {{
+    dev_template.has_resource_properties("AWS::DynamoDB::Table", {
         "Tags": assertions.Match.array_with([
-            assertions.Match.object_like({{"Key": "ResourceType", "Value": "DynamoDB"}}),
+            assertions.Match.object_like({"Key": "ResourceType", "Value": "DynamoDB"}),
         ]),
-    }})
+    })
 
 # Test removal policy is phase-conditional (applies to any stateful
 # resource — DynamoDB, S3, RDS, etc.)
 def test_table_is_retained_in_prod(prod_template):
-    prod_template.has_resource("AWS::DynamoDB::Table", {{
+    prod_template.has_resource("AWS::DynamoDB::Table", {
         "DeletionPolicy": "Retain",
         "UpdateReplacePolicy": "Retain",
-    }})
+    })
 
 def test_table_is_destroyed_in_dev(dev_template):
-    dev_template.has_resource("AWS::DynamoDB::Table", {{
+    dev_template.has_resource("AWS::DynamoDB::Table", {
         "DeletionPolicy": "Delete",
         "UpdateReplacePolicy": "Delete",
-    }})
+    })
 ```
 
 ### Mock AWS calls in tests — never hit real infrastructure
@@ -834,7 +840,7 @@ def test_table_is_destroyed_in_dev(dev_template):
 - **App-specific config values in `cdk.json`** context block (table names,
   bucket names, feature toggles)
 - **Raw dict/context lookups with manual type casting** (`str(env_cfg["key"])`,
-  `... or {{}}` fallbacks) instead of loading through a typed model
+  `... or {}` fallbacks) instead of loading through a typed model
 - **Config accessed via string keys** scattered across `app.py`/stacks rather
   than typed attribute access with autocomplete
 - **Environment config that isn't validated for both `dev` and `prod`** by the

@@ -4,7 +4,7 @@ from ai_reviewer.tools._tool_template import make_review_tool
 
 toolset = make_review_tool(
     name="docstring_review_guidance",
-    prompt_file="docstring_review.md",
+    prompt_file="docstring-review/SKILL.md",
     description=(
         "Get instructions for reviewing Python docstrings. "
         "Call this tool when the PR adds or modifies public functions, "

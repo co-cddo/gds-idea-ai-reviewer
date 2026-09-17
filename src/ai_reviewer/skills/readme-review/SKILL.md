@@ -1,6 +1,12 @@
+---
+name: readme-review
+description: Review README files for structure, accuracy against code, installation and devcontainer instructions, troubleshooting, and keeping docs in sync with behaviour changes. Use when writing or reviewing a README.md or nested README file.
+metadata:
+  ai_reviewer_tool: readme_review_guidance
+---
+
 # README Review Standards
 
-Target: {repository} / PR #{pr_number}
 
 This document defines README standards for gds-idea projects. It serves as both
 a human-readable reference and the automated reviewer's criteria. It is scoped
@@ -141,7 +147,7 @@ the existing prose already covers the same ground.
 **Bad — the app clearly calls an external API but the README never says so:**
 ```python
 # The code calls out to a third-party service...
-response = requests.get(f"https://api.example-provider.com/v1/lookup/{{ref}}")
+response = requests.get(f"https://api.example-provider.com/v1/lookup/{ref}")
 ```
 ```markdown
 <!-- ...but the README has no mention of example-provider.com anywhere -->
