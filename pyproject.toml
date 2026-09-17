@@ -3,7 +3,7 @@ name = "gds-idea-pkg-ai-reviewer"
 description = "AI-powered code review agent using AWS Bedrock Claude and GitHub MCP Server"
 readme = "README.md"
 authors = [
-    { name = "Jose Orjales", email = "201837803+JOrjales-gds@users.noreply.github.com" }
+    { name = "Jose Orjales", email = "Jose.Orjales@dsit.gov.uk" }
 ]
 requires-python = ">=3.11"
 dependencies = [
