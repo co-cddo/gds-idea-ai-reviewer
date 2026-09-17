@@ -18,6 +18,7 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: GitHub organisation to trust (e.g. 'co-cddo').
         role_name: Name for the IAM role.
         bedrock_model_id: Bedrock model ID to grant InvokeModel access for.
+        ai_reviewer_inference_profile_arn: inference profile of the ai-reviewer-specific ARN
     """
 
     def __init__(
@@ -28,6 +29,7 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: str,
         role_name: str,
         bedrock_model_id: str,
+        ai_reviewer_inference_profile_arn: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -74,6 +76,7 @@ class AIReviewerIAMStack(cdk.Stack):
                     f"arn:aws:bedrock:{self.region}::foundation-model/{bedrock_model_id}",
                     # Also allow cross-region inference profiles (e.g. eu.anthropic.*)
                     f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
+                    ai_reviewer_inference_profile_arn,
                 ],
             )
         )
