@@ -20,7 +20,7 @@ inference_profiles_stack = InferenceProfilesStack(
     app,
     f"ai-reviewer-inference-profiles-{phase}",
     env=cdk_env,
-    foundation_model_arn=config.foundation_model_arn(cdk_env),
+    model_source_arn=config.eu_inference_profile_arn(cdk_env),
 )
 
 AIReviewerIAMStack(
