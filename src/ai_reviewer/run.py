@@ -30,17 +30,21 @@ async def main() -> None:
     model_id = os.environ.get("MODEL_ID", "anthropic.claude-sonnet-5")
     aws_region = os.environ.get("AWS_REGION", "eu-west-2")
     aws_profile = os.environ.get("AWS_PROFILE")  # For local testing only (not used in Actions)
+    inference_profile_arn = os.environ.get("BEDROCK_INFERENCE_PROFILE_ARN")
 
     print(f"Starting AI review for {repo}#{pr_number}")
     print(f"Model: {model_id} | Region: {aws_region}")
     if aws_profile:
         print(f"AWS Profile: {aws_profile} (local mode)")
+    if inference_profile_arn:
+        print(f"Inference profile: {inference_profile_arn}")
 
     agent = ReviewerAgent(
         github_token=github_token,
         model_id=model_id,
         aws_region=aws_region,
         aws_profile=aws_profile,
+        inference_profile_arn=inference_profile_arn,
     )
 
     result = await agent.review(repo=repo, pr_number=pr_number)

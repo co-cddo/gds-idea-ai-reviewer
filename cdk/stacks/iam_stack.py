@@ -7,6 +7,7 @@ The GitHub OIDC provider must already exist in the account.
 """
 
 import aws_cdk as cdk
+import config
 from aws_cdk import aws_iam as iam
 from constructs import Construct
 
@@ -18,6 +19,7 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: GitHub organisation to trust (e.g. 'co-cddo').
         role_name: Name for the IAM role.
         bedrock_model_id: Bedrock model ID to grant InvokeModel access for.
+        ai_reviewer_inference_profile_arn: inference profile of the ai-reviewer-specific ARN
     """
 
     def __init__(
@@ -28,6 +30,7 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: str,
         role_name: str,
         bedrock_model_id: str,
+        ai_reviewer_inference_profile_arn: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -64,16 +67,15 @@ class AIReviewerIAMStack(cdk.Stack):
             max_session_duration=cdk.Duration.hours(1),
         )
 
-        # Grant bedrock:InvokeModel on the specific model only
+        # Grant bedrock:InvokeModel on the specific model and application inference profile only
         role.add_to_policy(
             iam.PolicyStatement(
                 sid="AllowBedrockInvokeModel",
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    # Foundation model ARN (region-specific)
-                    f"arn:aws:bedrock:{self.region}::foundation-model/{bedrock_model_id}",
-                    # Also allow cross-region inference profiles (e.g. eu.anthropic.*)
-                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
+                    # Foundation model ARN
+                    *[f"arn:aws:bedrock:{r}::foundation-model/{bedrock_model_id}" for r in config.BEDROCK_FM_REGIONS],
+                    ai_reviewer_inference_profile_arn,
                 ],
             )
         )

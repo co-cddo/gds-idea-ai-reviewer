@@ -3,7 +3,7 @@
 from importlib.resources import files
 
 from pydantic_ai import Agent
-from pydantic_ai.models.bedrock import BedrockConverseModel
+from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelSettings
 from pydantic_ai.providers.bedrock import BedrockProvider
 
 from ai_reviewer.github_server import get_github_server
@@ -26,6 +26,9 @@ class ReviewerAgent:
         model_id: AWS Bedrock model ID.
         aws_region: AWS region for Bedrock API calls.
         aws_profile: Optional AWS profile name (for local testing only).
+        inference_profile_arn: Bedrock inference profile ARN. When
+            set, requests are routed through this inference profile (for
+            cost tracking).
     """
 
     def __init__(
@@ -34,6 +37,7 @@ class ReviewerAgent:
         model_id: str = "anthropic.claude-sonnet-5",
         aws_region: str = "eu-west-2",
         aws_profile: str | None = None,
+        inference_profile_arn: str | None = None,
     ):
         # Setup Bedrock provider
         # In GitHub Actions: uses OIDC (default credential chain)
@@ -49,9 +53,13 @@ class ReviewerAgent:
         # Load agent-level instructions (submission template, combination logic)
         agent_instructions = files("ai_reviewer.prompts").joinpath("agent_prompt.md").read_text()
 
+        model_settings = (
+            BedrockModelSettings(bedrock_inference_profile=inference_profile_arn) if inference_profile_arn else None
+        )
+
         # Create agent with GitHub MCP + all discovered review toolsets
         self.agent = Agent(
-            BedrockConverseModel(model_id, provider=self.bedrock_provider),
+            BedrockConverseModel(model_id, provider=self.bedrock_provider, settings=model_settings),
             instructions=agent_instructions,
             toolsets=[self.github_server, *get_all_toolsets()],
         )
