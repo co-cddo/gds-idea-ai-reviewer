@@ -1,4 +1,4 @@
-"""Configurationfor the review agent's model settings."""
+"""Configuration for the review agent's model settings."""
 
 # Maximum output tokens for requests.
 MAX_TOKENS = 16000
