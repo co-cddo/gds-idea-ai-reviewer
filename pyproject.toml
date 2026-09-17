@@ -22,6 +22,7 @@ dev = [
 cdk = [
     "aws-cdk-lib>=2.180.0",
     "constructs>=10.0.0",
+    "gds-idea-cdk-constructs>=0.6.4",
 ]
 
 [build-system]
@@ -30,6 +31,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "vcs"
+
+[[tool.uv.index]]
+name = "gds-idea"
+url = "https://co-cddo.github.io/gds-idea-pypi/simple/"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/ai_reviewer/_version.py"
@@ -52,3 +57,6 @@ known-first-party = ["ai_reviewer"]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = ["integration: tests that require external services"]
+
+[tool.uv.sources]
+gds-idea-cdk-constructs = { index = "gds-idea" }
