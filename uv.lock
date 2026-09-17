@@ -121,6 +121,39 @@ wheels = [
 ]
 
 [[package]]
+name = "aws-cdk-aws-bedrock-agentcore-alpha"
+version = "2.261.0a0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aws-cdk-aws-bedrock-alpha" },
+    { name = "aws-cdk-lib" },
+    { name = "constructs" },
+    { name = "jsii" },
+    { name = "publication" },
+    { name = "typeguard" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2b/ac/62132ed7708a75eff5be09492f97c3d6eddde28e65578cee76648dd2e7df/aws_cdk_aws_bedrock_agentcore_alpha-2.261.0a0.tar.gz", hash = "sha256:8029440f4c2dccfafdcedb6f60a1f7f1330d5b6f2f2e7d246b5f2d324138735b", size = 1113763, upload-time = "2026-07-02T16:32:27.475Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/9c/43bd5917fc0a9a1cc3cda03ccaf19da9e7a44561423f3810b563448a4b76/aws_cdk_aws_bedrock_agentcore_alpha-2.261.0a0-py3-none-any.whl", hash = "sha256:b4bca94537daa438a1a7c50124618e1b1b02d0235951a020d1a8ddeedabe4bec", size = 1115370, upload-time = "2026-07-02T16:31:30.973Z" },
+]
+
+[[package]]
+name = "aws-cdk-aws-bedrock-alpha"
+version = "2.261.0a0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aws-cdk-lib" },
+    { name = "constructs" },
+    { name = "jsii" },
+    { name = "publication" },
+    { name = "typeguard" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/2b/9db7b5d420c70094fdf4ad1d69c8c8e2237311648d327d28e2b10d082b97/aws_cdk_aws_bedrock_alpha-2.261.0a0.tar.gz", hash = "sha256:c6fecd4e9fe16167da5f7d7cab17e2c34c81be2a13a649cdec9803ec8d0f07d3", size = 655442, upload-time = "2026-07-02T16:32:28.496Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/10/46ec5f6535dd1b0afd099487ee5b2c73ee4f2fa54e2705cf9a41bc80052f/aws_cdk_aws_bedrock_alpha-2.261.0a0-py3-none-any.whl", hash = "sha256:63290ba4e9cbeebcc1e767a01449d780b1210dcb01becc4e78ca4099d9767dfa", size = 623875, upload-time = "2026-07-02T16:31:32.314Z" },
+]
+
+[[package]]
 name = "aws-cdk-cloud-assembly-schema"
 version = "54.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -633,6 +666,20 @@ wheels = [
 ]
 
 [[package]]
+name = "gds-idea-cdk-constructs"
+version = "0.6.4"
+source = { registry = "https://co-cddo.github.io/gds-idea-pypi/simple/" }
+dependencies = [
+    { name = "aws-cdk-aws-bedrock-agentcore-alpha" },
+    { name = "aws-cdk-lib" },
+    { name = "boto3" },
+]
+sdist = { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.6.4/gds_idea_cdk_constructs-0.6.4.tar.gz", hash = "sha256:6745fe675cfa0717e420ae3ca09b5643130d13b9743ab6e08bb5f5b8d3d406a7" }
+wheels = [
+    { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.6.4/gds_idea_cdk_constructs-0.6.4-py3-none-any.whl", hash = "sha256:2e7b97d7ef3c08e9b62034bb7cc92a5bef8d6a788f79fcbc09654fdad97f8936" },
+]
+
+[[package]]
 name = "gds-idea-pkg-ai-reviewer"
 source = { editable = "." }
 dependencies = [
@@ -645,6 +692,7 @@ dependencies = [
 cdk = [
     { name = "aws-cdk-lib" },
     { name = "constructs" },
+    { name = "gds-idea-cdk-constructs" },
 ]
 dev = [
     { name = "pre-commit" },
@@ -663,6 +711,7 @@ requires-dist = [
 cdk = [
     { name = "aws-cdk-lib", specifier = ">=2.180.0" },
     { name = "constructs", specifier = ">=10.0.0" },
+    { name = "gds-idea-cdk-constructs", specifier = ">=0.6.4", index = "https://co-cddo.github.io/gds-idea-pypi/simple/" },
 ]
 dev = [
     { name = "pre-commit" },
