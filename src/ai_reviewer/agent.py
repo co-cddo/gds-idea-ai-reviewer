@@ -6,6 +6,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelSettings
 from pydantic_ai.providers.bedrock import BedrockProvider
 
+from ai_reviewer import config
 from ai_reviewer.github_server import get_github_server
 from ai_reviewer.tools import get_all_toolsets
 
@@ -29,6 +30,10 @@ class ReviewerAgent:
         inference_profile_arn: Bedrock inference profile ARN. When
             set, requests are routed through this inference profile (for
             cost tracking).
+        max_tokens: Maximum output tokens for Bedrock requests. Defaults
+            to ai_reviewer.config.MAX_TOKENS.
+        enable_thinking: Whether extended thinking is enabled.
+            Defaults to ai_reviewer.config.ENABLE_THINKING.
     """
 
     def __init__(
@@ -38,6 +43,8 @@ class ReviewerAgent:
         aws_region: str = "eu-west-2",
         aws_profile: str | None = None,
         inference_profile_arn: str | None = None,
+        max_tokens: int = config.MAX_TOKENS,
+        enable_thinking: bool = config.ENABLE_THINKING,
     ):
         # Setup Bedrock provider
         # In GitHub Actions: uses OIDC (default credential chain)
@@ -53,9 +60,11 @@ class ReviewerAgent:
         # Load agent-level instructions (submission template, combination logic)
         agent_instructions = files("ai_reviewer.prompts").joinpath("agent_prompt.md").read_text()
 
-        model_settings = (
-            BedrockModelSettings(bedrock_inference_profile=inference_profile_arn) if inference_profile_arn else None
-        )
+        model_settings = BedrockModelSettings(max_tokens=max_tokens)
+        if not enable_thinking:
+            model_settings["bedrock_additional_model_requests_fields"] = {"thinking": {"type": "disabled"}}
+        if inference_profile_arn:
+            model_settings["bedrock_inference_profile"] = inference_profile_arn
 
         # Create agent with GitHub MCP + all discovered review toolsets
         self.agent = Agent(
