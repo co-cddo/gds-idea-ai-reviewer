@@ -1,7 +1,7 @@
 """Inference profiles stack.
 
 Creates one Bedrock Application Inference Profile per team, each copying
-same eu-west-2 foundation model as its model source.
+the same eu.anthropic.claude-sonnet-5 inference profile as source.
 """
 
 import aws_cdk as cdk
@@ -16,7 +16,7 @@ class InferenceProfilesStack(cdk.Stack):
     """Stack that creates one Application Inference Profile per team.
 
     Args:
-        foundation_model_arn: ARN of the foundation model to use as the
+        model_source_arn: ARN of the inference profile to use as the
             model source for every team's application inference profile.
     """
 
@@ -25,7 +25,7 @@ class InferenceProfilesStack(cdk.Stack):
         scope: Construct,
         construct_id: str,
         *,
-        foundation_model_arn: str,
+        model_source_arn: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -37,9 +37,9 @@ class InferenceProfilesStack(cdk.Stack):
                 self,
                 f"{team.title().replace('-', '')}InferenceProfile",
                 inference_profile_name=team,
-                description=f"Application inference profile for the {team} team, used for cost tracking.",
+                description=f"Application inference profile for the {team} team used for cost tracking.",
                 model_source=bedrock.CfnApplicationInferenceProfile.InferenceProfileModelSourceProperty(
-                    copy_from=foundation_model_arn,
+                    copy_from=model_source_arn,
                 ),
                 tags=[cdk.CfnTag(key="Team", value=team)],
             )
