@@ -57,7 +57,11 @@ class AIReviewerIAMStack(cdk.Stack):
                 oidc_provider.open_id_connect_provider_arn,
                 conditions={
                     "StringLike": {
-                        "token.actions.githubusercontent.com:sub": f"repo:{github_org}/*:*",
+                        # GitHub's ID-qualified subjects add "@<id>" after the org and repo names.
+                        "token.actions.githubusercontent.com:sub": [
+                            f"repo:{github_org}/*:*",
+                            f"repo:{github_org}@*/*:*",
+                        ],
                     },
                     "StringEquals": {
                         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
