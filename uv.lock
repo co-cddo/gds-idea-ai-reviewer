@@ -667,16 +667,16 @@ wheels = [
 
 [[package]]
 name = "gds-idea-cdk-constructs"
-version = "0.6.4"
+version = "0.7.0"
 source = { registry = "https://co-cddo.github.io/gds-idea-pypi/simple/" }
 dependencies = [
     { name = "aws-cdk-aws-bedrock-agentcore-alpha" },
     { name = "aws-cdk-lib" },
     { name = "boto3" },
 ]
-sdist = { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.6.4/gds_idea_cdk_constructs-0.6.4.tar.gz", hash = "sha256:6745fe675cfa0717e420ae3ca09b5643130d13b9743ab6e08bb5f5b8d3d406a7" }
+sdist = { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.7.0/gds_idea_cdk_constructs-0.7.0.tar.gz", hash = "sha256:6f62159eedcdaacfd94846676e447fbc58bb442179fdfda865ee17ab7c76550b" }
 wheels = [
-    { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.6.4/gds_idea_cdk_constructs-0.6.4-py3-none-any.whl", hash = "sha256:2e7b97d7ef3c08e9b62034bb7cc92a5bef8d6a788f79fcbc09654fdad97f8936" },
+    { url = "https://github.com/co-cddo/gds-idea-cdk-constructs-new/releases/download/v0.7.0/gds_idea_cdk_constructs-0.7.0-py3-none-any.whl", hash = "sha256:aecabccfd2d20d256f121e940e7fd71a4c812e4cc8a873b4e88dfd399c3c910e" },
 ]
 
 [[package]]
@@ -711,7 +711,7 @@ requires-dist = [
 cdk = [
     { name = "aws-cdk-lib", specifier = ">=2.180.0" },
     { name = "constructs", specifier = ">=10.0.0" },
-    { name = "gds-idea-cdk-constructs", specifier = ">=0.6.4", index = "https://co-cddo.github.io/gds-idea-pypi/simple/" },
+    { name = "gds-idea-cdk-constructs", specifier = ">=0.7.0", index = "https://co-cddo.github.io/gds-idea-pypi/simple/" },
 ]
 dev = [
     { name = "pre-commit" },
