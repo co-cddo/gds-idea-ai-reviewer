@@ -1,7 +1,7 @@
 # GDS IDEA AI Code Reviewer
 
 AI-powered code review agent that runs as a GitHub Action. Uses AWS Bedrock
-(Claude Sonnet 4.6) via the GitHub MCP Server to analyse pull request diffs
+(Claude Sonnet 5.5) via the GitHub MCP Server to analyse pull request diffs
 and post advisory review comments.
 
 ## How It Works
@@ -174,7 +174,7 @@ The following are always skipped: `.lock`, `.csv`, images, fonts,
 |-------|---------|-------------|
 | `aws_account_id` | `992382722318` | AWS account with Bedrock access |
 | `aws_role_name` | `ai-reviewer-role` | IAM role name for OIDC |
-| `model_id` | `anthropic.claude-sonnet-4-6` | Bedrock model ID |
+| `model_id` | `anthropic.claude-sonnet-5-5` | Bedrock model ID |
 | `aws_region` | `eu-west-2` | AWS region |
 
 ## Future Enhancements
@@ -230,7 +230,7 @@ export PR_NUMBER=1
 export REPO="co-cddo/your-test-repo"
 export AWS_PROFILE="bedrock-user-jose"
 export AWS_REGION="eu-west-2"
-export MODEL_ID="anthropic.claude-sonnet-4-6"
+export MODEL_ID="anthropic.claude-sonnet-5-5"
 
 uv run python -m ai_reviewer.run
 ```
@@ -264,7 +264,7 @@ uv run cdk deploy --profile aws-prototype
 This creates:
 - IAM role `ai-reviewer-role` in the DEV account (`992382722318`)
 - Trust policy for GitHub OIDC (scoped to `co-cddo` org)
-- Bedrock InvokeModel permission (scoped to Claude Sonnet 4.6)
+- Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5)
 
 The CDK stack imports the existing GitHub OIDC provider (which already
 exists if CDK/Terraform workflows use OIDC in the same account).

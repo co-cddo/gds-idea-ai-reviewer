@@ -4,10 +4,7 @@ import aws_cdk as cdk
 
 github_org = "co-cddo"
 role_name = "ai-reviewer-role"
-bedrock_model_id = "anthropic.claude-sonnet-5"
-
-# Claude Sonnet 5 doesn't support on-demand inference,
-# only geo or global cross-Region inference profiles work.
+bedrock_model_id = "anthropic.claude-sonnet-5-5"
 # eu.anthropic.claude-sonnet-5 profile can route to any of these regions,
 # so bedrock:InvokeModel on the foundation model must be granted
 # in all of them otherwise can cause a failure.

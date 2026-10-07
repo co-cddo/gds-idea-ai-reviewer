@@ -1,7 +1,7 @@
 """Inference profiles stack.
 
 Creates one Bedrock Application Inference Profile per team, each copying
-the same eu.anthropic.claude-sonnet-5 inference profile as source.
+the same eu.anthropic.claude-sonnet-5-5 inference profile as source.
 """
 
 import aws_cdk as cdk
