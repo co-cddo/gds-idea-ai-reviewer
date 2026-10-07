@@ -32,7 +32,6 @@ AIReviewerIAMStack(
     github_org=config.github_org,
     role_name=config.role_name,
     bedrock_model_id=config.bedrock_model_id,
-    ai_reviewer_inference_profile_arn=inference_profiles_stack.profile_arns["ai-reviewer"],
 )
 
 IdeaTags(

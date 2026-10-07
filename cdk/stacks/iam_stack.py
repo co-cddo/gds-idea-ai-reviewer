@@ -19,7 +19,6 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: GitHub organisation to trust (e.g. 'co-cddo').
         role_name: Name for the IAM role.
         bedrock_model_id: Bedrock model ID to grant InvokeModel access for.
-        ai_reviewer_inference_profile_arn: inference profile of the ai-reviewer-specific ARN
     """
 
     def __init__(
@@ -30,7 +29,6 @@ class AIReviewerIAMStack(cdk.Stack):
         github_org: str,
         role_name: str,
         bedrock_model_id: str,
-        ai_reviewer_inference_profile_arn: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -71,15 +69,18 @@ class AIReviewerIAMStack(cdk.Stack):
             max_session_duration=cdk.Duration.hours(1),
         )
 
-        # Grant bedrock:InvokeModel on the specific model and application inference profile only
+        # Grant bedrock:InvokeModel on the specific model and application inference profiles only
         role.add_to_policy(
             iam.PolicyStatement(
                 sid="AllowBedrockInvokeModel",
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    # Foundation model ARN
+                    # Foundation model ARN, one per region the eu.* profile can route to
                     *[f"arn:aws:bedrock:{r}::foundation-model/{bedrock_model_id}" for r in config.BEDROCK_FM_REGIONS],
-                    ai_reviewer_inference_profile_arn,
+                    # Deliberately a wildcard: application profile ARNs get a new generated ID whenever
+                    # a profile is replaced (e.g. on a model bump). Referencing the profiles stack
+                    # directly creates a CloudFormation export that blocks that replacement.
+                    f"arn:aws:bedrock:{self.region}:{self.account}:application-inference-profile/*",
                 ],
             )
         )
