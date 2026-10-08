@@ -32,7 +32,8 @@ class ReviewerAgent:
             cost tracking).
         max_tokens: Maximum output tokens for Bedrock requests. Defaults
             to ai_reviewer.config.MAX_TOKENS.
-        enable_thinking: Whether extended thinking is enabled.
+        enable_thinking: Whether the model thinks before replying. When
+            False, it only writes short updates between tool calls.
             Defaults to ai_reviewer.config.ENABLE_THINKING.
     """
 
@@ -62,7 +63,8 @@ class ReviewerAgent:
 
         model_settings = BedrockModelSettings(max_tokens=max_tokens)
         if not enable_thinking:
-            model_settings["bedrock_additional_model_requests_fields"] = {"thinking": {"type": "disabled"}}
+            # Sonnet 5.5 turns thinking off with "between_tools".
+            model_settings["bedrock_additional_model_requests_fields"] = {"thinking": {"type": "between_tools"}}
         if inference_profile_arn:
             model_settings["bedrock_inference_profile"] = inference_profile_arn
 
