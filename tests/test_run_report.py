@@ -71,7 +71,7 @@ def test_report_separates_review_tools_from_other_calls() -> None:
     assert "  agent_context\n  cdk_review_guidance" in report
     assert "get_pull_request_diff x1" in report
     assert "pull_request_review_write x1" in report
-    assert "Requests: 5 | Tool calls: 5" in report
+    assert "Model requests: 5 | Tool calls: 5" in report
     assert "Tokens: 5,000 in | 500 out" in report
     assert "Estimated cost: $" in report
 
@@ -91,7 +91,7 @@ def test_report_comment_is_collapsed_and_contains_cli_report() -> None:
     comment = format_report_comment(_history(), usage, GUIDANCE, MODEL)
 
     assert comment.startswith(RUN_REPORT_MARKER + "\n<details>\n<summary>Run report: est. $")
-    assert "(5 requests, 5 tool calls)</summary>\n\n```text\n--- Run report ---" in comment
+    assert "(5 model requests, 5 tool calls)</summary>\n\n```text\n--- Run report ---" in comment
     assert format_run_report(_history(), usage, GUIDANCE, MODEL) in comment
     assert comment.endswith("```\n\n</details>")
 
@@ -102,4 +102,4 @@ def test_report_comment_summary_says_unavailable_for_unknown_model() -> None:
         [_response(model_name="not-a-real-model")], RunUsage(), GUIDANCE, "not-a-real-model"
     )
 
-    assert "<summary>Run report: cost unavailable (0 requests, 0 tool calls)</summary>" in comment
+    assert "<summary>Run report: cost unavailable (0 model requests, 0 tool calls)</summary>" in comment
