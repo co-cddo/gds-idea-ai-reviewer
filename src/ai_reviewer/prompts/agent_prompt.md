@@ -64,6 +64,11 @@ Use this structure:
 ### Nits
 4. **`filename`** — Minor style issue (only if worth mentioning)
 
+### Reviewed by
+- `agent_context` — repository orientation (all PRs)
+- `tool_name_guidance` — `path/one.py`, `path/two.py`
+Not run: `other_tool_guidance` (no matching files)
+
 ---
 
 [1-2 sentence overall assessment: is this ready to merge, or are there blockers?]
@@ -72,7 +77,13 @@ Use this structure:
 *This is an automated review by the GDS IDEA AI Reviewer. Comments are advisory.*
 
 Include ALL findings in this body — this is the only place they will appear.
-Omit empty sections (e.g. if there are no nits, skip that heading).
+Omit empty findings sections (e.g. if there are no nits, skip that heading).
+
+**Always include "Reviewed by"**, even when there are no findings. List every guidance
+tool you actually called (including `agent_context`), with the changed files you applied
+that tool's criteria to. Then add one "Not run:" line naming the guidance tools you did not
+call, with a short reason. Only list tools you really called and files you really examined —
+do not guess.
 
 ## Edge Cases
 

@@ -1,5 +1,6 @@
 """AI Reviewer Agent - orchestrates code review using Bedrock and GitHub MCP."""
 
+from dataclasses import dataclass
 from importlib.resources import files
 
 from pydantic_ai import Agent
@@ -8,7 +9,23 @@ from pydantic_ai.providers.bedrock import BedrockProvider
 
 from ai_reviewer import config
 from ai_reviewer.github_server import get_github_server
+from ai_reviewer.run_report import format_report_comment, format_run_report
 from ai_reviewer.tools import get_all_toolsets
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    """Outcome of a review run.
+
+    Attributes:
+        output: The model's final message summarising the review it submitted.
+        report: Plain-text run report listing tools called, token usage and estimated cost.
+        report_comment: The run report as a collapsed Markdown block, to post on the PR.
+    """
+
+    output: str
+    report: str
+    report_comment: str
 
 
 class ReviewerAgent:
@@ -69,13 +86,16 @@ class ReviewerAgent:
             model_settings["bedrock_inference_profile"] = inference_profile_arn
 
         # Create agent with GitHub MCP + all discovered review toolsets
+        self.model_id = model_id
+        review_toolsets = get_all_toolsets()
+        self.guidance_tool_names = {name for toolset in review_toolsets for name in toolset.tools}
         self.agent = Agent(
             BedrockConverseModel(model_id, provider=self.bedrock_provider, settings=model_settings),
             instructions=agent_instructions,
-            toolsets=[self.github_server, *get_all_toolsets()],
+            toolsets=[self.github_server, *review_toolsets],
         )
 
-    async def review(self, repo: str, pr_number: int) -> str:
+    async def review(self, repo: str, pr_number: int) -> ReviewResult:
         """
         Run an AI code review on a pull request.
 
@@ -87,7 +107,9 @@ class ReviewerAgent:
             pr_number: Pull request number to review.
 
         Returns:
-            Summary of the review that was submitted.
+            The model's summary of the review it submitted, a run report built
+            from the run's actual tool calls and usage, and the same report
+            formatted as a PR comment.
         """
         query = (
             f"Review pull request #{pr_number} in repository {repo}. "
@@ -99,4 +121,7 @@ class ReviewerAgent:
 
         async with self.agent:
             result = await self.agent.run(query)
-            return result.output
+            messages = result.all_messages()
+            report = format_run_report(messages, result.usage, self.guidance_tool_names, self.model_id)
+            report_comment = format_report_comment(messages, result.usage, self.guidance_tool_names, self.model_id)
+            return ReviewResult(output=result.output, report=report, report_comment=report_comment)
