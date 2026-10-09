@@ -57,17 +57,17 @@ async def main() -> None:
     print()
     print(result.report)
 
-    post_cost_comment(repo, pr_number, result.cost_comment, github_token)
+    post_report_comment(repo, pr_number, result.report_comment, github_token)
 
 
-def post_cost_comment(repo: str, pr_number: int, body: str, token: str) -> None:
-    """Post the run's cost note on the PR, warning instead of failing if GitHub rejects it."""
+def post_report_comment(repo: str, pr_number: int, body: str, token: str) -> None:
+    """Post the run report on the PR, warning instead of failing if GitHub rejects it."""
     try:
         url = post_pr_comment(repo, pr_number, body, token)
     except httpx.HTTPError as exc:
-        print(f"Warning: could not post cost comment: {exc}", file=sys.stderr)
+        print(f"Warning: could not post run report comment: {exc}", file=sys.stderr)
     else:
-        print(f"Posted cost comment: {url}")
+        print(f"Posted run report comment: {url}")
 
 
 if __name__ == "__main__":

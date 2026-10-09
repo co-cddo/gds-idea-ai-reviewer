@@ -36,4 +36,5 @@ def test_review_returns_output_and_run_report() -> None:
     assert result.output
     assert "Review tools called (in order):\n  agent_context" in result.report
     assert "Estimated cost:" in result.report
-    assert result.cost_comment.startswith("<!-- ai-reviewer:run-cost -->")
+    assert result.report_comment.startswith("<!-- ai-reviewer:run-cost -->")
+    assert "Review tools called" in result.report_comment

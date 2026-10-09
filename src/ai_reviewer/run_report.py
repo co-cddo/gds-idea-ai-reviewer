@@ -40,30 +40,7 @@ def estimate_cost(messages: Iterable[ModelMessage]) -> Decimal | None:
     return total
 
 
-COST_COMMENT_MARKER = "<!-- ai-reviewer:run-cost -->"
-
-
-def format_cost_comment(messages: list[ModelMessage], usage: RunUsage, model_id: str) -> str:
-    """Format the one-line cost note posted on the PR after a review.
-
-    The leading hidden marker lets tooling find these comments later.
-
-    Args:
-        messages: The full message history of the run.
-        usage: Token and request totals for the run.
-        model_id: Model the cost was estimated for.
-    """
-    cost = estimate_cost(messages)
-    cost_text = (
-        "cost unavailable (no price found)"
-        if cost is None
-        else f"est. cost ${cost:.2f} ({model_id}, list price, not the AWS bill)"
-    )
-    return (
-        f"{COST_COMMENT_MARKER}\n"
-        f"<sub>AI review run: {usage.requests} requests, "
-        f"{usage.input_tokens:,} in / {usage.output_tokens:,} out tokens, {cost_text}</sub>"
-    )
+RUN_REPORT_MARKER = "<!-- ai-reviewer:run-cost -->"
 
 
 def format_run_report(
@@ -99,3 +76,27 @@ def format_run_report(
     else:
         lines.append(f"Estimated cost: ${cost:.2f} ({model_id}, USD, from public list prices)")
     return "\n".join(lines)
+
+
+def format_report_comment(
+    messages: list[ModelMessage],
+    usage: RunUsage,
+    guidance_tool_names: set[str],
+    model_id: str,
+) -> str:
+    """Format the run report as a collapsed PR comment.
+
+    The summary line shows the estimated cost; expanding it reveals the same report the CLI prints.
+    The leading hidden marker lets tooling find these comments later.
+
+    Args:
+        messages: The full message history of the run.
+        usage: Token and request totals for the run.
+        guidance_tool_names: Names of the review guidance tools.
+        model_id: Model the cost was estimated for.
+    """
+    cost = estimate_cost(messages)
+    cost_text = "cost unavailable" if cost is None else f"est. ${cost:.2f}"
+    summary = f"Run report: {cost_text} ({usage.requests} requests, {usage.tool_calls} tool calls)"
+    report = format_run_report(messages, usage, guidance_tool_names, model_id)
+    return f"{RUN_REPORT_MARKER}\n<details>\n<summary>{summary}</summary>\n\n```text\n{report}\n```\n\n</details>"

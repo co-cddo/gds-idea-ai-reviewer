@@ -6,10 +6,10 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCall
 from pydantic_ai.usage import RequestUsage, RunUsage
 
 from ai_reviewer.run_report import (
-    COST_COMMENT_MARKER,
+    RUN_REPORT_MARKER,
     collect_tool_calls,
     estimate_cost,
-    format_cost_comment,
+    format_report_comment,
     format_run_report,
 )
 
@@ -84,23 +84,22 @@ def test_report_says_cost_unavailable_for_unknown_model() -> None:
     assert "  (none)" in report
 
 
-def test_cost_comment_has_marker_usage_and_cost() -> None:
-    """The PR note starts with the hidden marker and states usage and estimated cost."""
+def test_report_comment_is_collapsed_and_contains_cli_report() -> None:
+    """The PR comment hides the CLI report behind a summary showing the cost."""
     usage = RunUsage(requests=5, tool_calls=5, input_tokens=5000, output_tokens=500)
 
-    comment = format_cost_comment(_history(), usage, MODEL)
+    comment = format_report_comment(_history(), usage, GUIDANCE, MODEL)
 
-    assert comment.startswith(COST_COMMENT_MARKER + "\n")
-    assert "5 requests, 5,000 in / 500 out tokens" in comment
-    assert "est. cost $" in comment
-    assert MODEL in comment
+    assert comment.startswith(RUN_REPORT_MARKER + "\n<details>\n<summary>Run report: est. $")
+    assert "(5 requests, 5 tool calls)</summary>\n\n```text\n--- Run report ---" in comment
+    assert format_run_report(_history(), usage, GUIDANCE, MODEL) in comment
+    assert comment.endswith("```\n\n</details>")
 
 
-def test_cost_comment_says_unavailable_for_unknown_model() -> None:
-    """Usage is still reported when no price exists."""
-    usage = RunUsage(requests=1, input_tokens=10, output_tokens=2)
+def test_report_comment_summary_says_unavailable_for_unknown_model() -> None:
+    """The summary still renders when no price exists."""
+    comment = format_report_comment(
+        [_response(model_name="not-a-real-model")], RunUsage(), GUIDANCE, "not-a-real-model"
+    )
 
-    comment = format_cost_comment([_response(model_name="not-a-real-model")], usage, "not-a-real-model")
-
-    assert "cost unavailable" in comment
-    assert "10 in / 2 out tokens" in comment
+    assert "<summary>Run report: cost unavailable (0 requests, 0 tool calls)</summary>" in comment
