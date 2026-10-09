@@ -66,7 +66,7 @@ def format_run_report(
     lines = ["--- Run report ---", "Review tools called (in order):"]
     lines += [f"  {name}" for name in guidance_calls] or ["  (none)"]
     lines.append("Other tool calls: " + (", ".join(f"{n} x{c}" for n, c in sorted(other_calls.items())) or "(none)"))
-    lines.append(f"Requests: {usage.requests} | Tool calls: {usage.tool_calls}")
+    lines.append(f"Model requests: {usage.requests} | Tool calls: {usage.tool_calls}")
     lines.append(
         f"Tokens: {usage.input_tokens:,} in | {usage.output_tokens:,} out | "
         f"{usage.cache_read_tokens:,} cache-read | {usage.cache_write_tokens:,} cache-write"
@@ -97,6 +97,6 @@ def format_report_comment(
     """
     cost = estimate_cost(messages)
     cost_text = "cost unavailable" if cost is None else f"est. ${cost:.2f}"
-    summary = f"Run report: {cost_text} ({usage.requests} requests, {usage.tool_calls} tool calls)"
+    summary = f"Run report: {cost_text} ({usage.requests} model requests, {usage.tool_calls} tool calls)"
     report = format_run_report(messages, usage, guidance_tool_names, model_id)
     return f"{RUN_REPORT_MARKER}\n<details>\n<summary>{summary}</summary>\n\n```text\n{report}\n```\n\n</details>"
