@@ -50,7 +50,9 @@ async def main() -> None:
     result = await agent.review(repo=repo, pr_number=pr_number)
 
     print("Review complete.")
-    print(result)
+    print(result.output)
+    print()
+    print(result.report)
 
 
 if __name__ == "__main__":
