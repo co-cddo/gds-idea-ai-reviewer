@@ -9,7 +9,7 @@ from pydantic_ai.providers.bedrock import BedrockProvider
 
 from ai_reviewer import config
 from ai_reviewer.github_server import get_github_server
-from ai_reviewer.run_report import format_run_report
+from ai_reviewer.run_report import format_cost_comment, format_run_report
 from ai_reviewer.tools import get_all_toolsets
 
 
@@ -20,10 +20,12 @@ class ReviewResult:
     Attributes:
         output: The model's final message summarising the review it submitted.
         report: Plain-text run report listing tools called, token usage and estimated cost.
+        cost_comment: Markdown note with the run's token usage and estimated cost, to post on the PR.
     """
 
     output: str
     report: str
+    cost_comment: str
 
 
 class ReviewerAgent:
@@ -105,8 +107,9 @@ class ReviewerAgent:
             pr_number: Pull request number to review.
 
         Returns:
-            The model's summary of the review it submitted, plus a run report
-            built from the run's actual tool calls and usage.
+            The model's summary of the review it submitted, a run report built
+            from the run's actual tool calls and usage, and the cost note to
+            post on the PR.
         """
         query = (
             f"Review pull request #{pr_number} in repository {repo}. "
@@ -118,5 +121,7 @@ class ReviewerAgent:
 
         async with self.agent:
             result = await self.agent.run(query)
-            report = format_run_report(result.all_messages(), result.usage, self.guidance_tool_names, self.model_id)
-            return ReviewResult(output=result.output, report=report)
+            messages = result.all_messages()
+            report = format_run_report(messages, result.usage, self.guidance_tool_names, self.model_id)
+            cost_comment = format_cost_comment(messages, result.usage, self.model_id)
+            return ReviewResult(output=result.output, report=report, cost_comment=cost_comment)

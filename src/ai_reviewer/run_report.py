@@ -40,6 +40,32 @@ def estimate_cost(messages: Iterable[ModelMessage]) -> Decimal | None:
     return total
 
 
+COST_COMMENT_MARKER = "<!-- ai-reviewer:run-cost -->"
+
+
+def format_cost_comment(messages: list[ModelMessage], usage: RunUsage, model_id: str) -> str:
+    """Format the one-line cost note posted on the PR after a review.
+
+    The leading hidden marker lets tooling find these comments later.
+
+    Args:
+        messages: The full message history of the run.
+        usage: Token and request totals for the run.
+        model_id: Model the cost was estimated for.
+    """
+    cost = estimate_cost(messages)
+    cost_text = (
+        "cost unavailable (no price found)"
+        if cost is None
+        else f"est. cost ${cost:.2f} ({model_id}, list price, not the AWS bill)"
+    )
+    return (
+        f"{COST_COMMENT_MARKER}\n"
+        f"<sub>AI review run: {usage.requests} requests, "
+        f"{usage.input_tokens:,} in / {usage.output_tokens:,} out tokens, {cost_text}</sub>"
+    )
+
+
 def format_run_report(
     messages: list[ModelMessage],
     usage: RunUsage,

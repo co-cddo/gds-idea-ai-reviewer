@@ -4,7 +4,10 @@ import asyncio
 import os
 import sys
 
+import httpx
+
 from ai_reviewer.agent import ReviewerAgent
+from ai_reviewer.github_comments import post_pr_comment
 
 
 async def main() -> None:
@@ -53,6 +56,18 @@ async def main() -> None:
     print(result.output)
     print()
     print(result.report)
+
+    post_cost_comment(repo, pr_number, result.cost_comment, github_token)
+
+
+def post_cost_comment(repo: str, pr_number: int, body: str, token: str) -> None:
+    """Post the run's cost note on the PR, warning instead of failing if GitHub rejects it."""
+    try:
+        url = post_pr_comment(repo, pr_number, body, token)
+    except httpx.HTTPError as exc:
+        print(f"Warning: could not post cost comment: {exc}", file=sys.stderr)
+    else:
+        print(f"Posted cost comment: {url}")
 
 
 if __name__ == "__main__":

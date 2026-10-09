@@ -5,7 +5,13 @@ from decimal import Decimal
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.usage import RequestUsage, RunUsage
 
-from ai_reviewer.run_report import collect_tool_calls, estimate_cost, format_run_report
+from ai_reviewer.run_report import (
+    COST_COMMENT_MARKER,
+    collect_tool_calls,
+    estimate_cost,
+    format_cost_comment,
+    format_run_report,
+)
 
 GUIDANCE = {"agent_context", "cdk_review_guidance"}
 MODEL = "anthropic.claude-sonnet-5-5"
@@ -76,3 +82,25 @@ def test_report_says_cost_unavailable_for_unknown_model() -> None:
 
     assert "Estimated cost: unavailable" in report
     assert "  (none)" in report
+
+
+def test_cost_comment_has_marker_usage_and_cost() -> None:
+    """The PR note starts with the hidden marker and states usage and estimated cost."""
+    usage = RunUsage(requests=5, tool_calls=5, input_tokens=5000, output_tokens=500)
+
+    comment = format_cost_comment(_history(), usage, MODEL)
+
+    assert comment.startswith(COST_COMMENT_MARKER + "\n")
+    assert "5 requests, 5,000 in / 500 out tokens" in comment
+    assert "est. cost $" in comment
+    assert MODEL in comment
+
+
+def test_cost_comment_says_unavailable_for_unknown_model() -> None:
+    """Usage is still reported when no price exists."""
+    usage = RunUsage(requests=1, input_tokens=10, output_tokens=2)
+
+    comment = format_cost_comment([_response(model_name="not-a-real-model")], usage, "not-a-real-model")
+
+    assert "cost unavailable" in comment
+    assert "10 in / 2 out tokens" in comment
