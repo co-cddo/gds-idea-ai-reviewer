@@ -25,7 +25,7 @@ inference_profiles_stack = InferenceProfilesStack(
     model_source_arn=config.eu_inference_profile_arn(cdk_env),
 )
 
-AIReviewerIAMStack(
+iam_stack = AIReviewerIAMStack(
     app,
     f"ai-reviewer-iam-{phase}",
     env=cdk_env,
@@ -33,6 +33,9 @@ AIReviewerIAMStack(
     role_name=config.role_name,
     bedrock_model_id=config.bedrock_model_id,
 )
+# The IAM stack reads the profile ARN from SSM, which CDK cannot see as a dependency.
+# This forces creation/updating the profiles first.
+iam_stack.add_dependency(inference_profiles_stack)
 
 IdeaTags(
     environment=deployment_environment,
