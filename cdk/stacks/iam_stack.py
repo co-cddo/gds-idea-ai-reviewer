@@ -9,7 +9,10 @@ The GitHub OIDC provider must already exist in the account.
 import aws_cdk as cdk
 import config
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_ssm as ssm
 from constructs import Construct
+
+from stacks.inference_profiles_stack import profile_arn_parameter_name
 
 
 class AIReviewerIAMStack(cdk.Stack):
@@ -69,7 +72,14 @@ class AIReviewerIAMStack(cdk.Stack):
             max_session_duration=cdk.Duration.hours(1),
         )
 
-        # Grant bedrock:InvokeModel on the specific model and application inference profiles only
+        # The ai-reviewer profile ARN changes whenever the profile is replaced (e.g. on a model bump).
+        # It is read from SSM, not imported from the profiles stack, because a CloudFormation export
+        # that is in use blocks that replacement.
+        profile_arn = ssm.StringParameter.value_for_string_parameter(
+            self, profile_arn_parameter_name(config.INVOKING_PROFILE_TEAM)
+        )
+
+        # Grant bedrock:InvokeModel on the specific model and the ai-reviewer inference profile only
         role.add_to_policy(
             iam.PolicyStatement(
                 sid="AllowBedrockInvokeModel",
@@ -77,10 +87,7 @@ class AIReviewerIAMStack(cdk.Stack):
                 resources=[
                     # Foundation model ARN, one per region the eu.* profile can route to
                     *[f"arn:aws:bedrock:{r}::foundation-model/{bedrock_model_id}" for r in config.BEDROCK_FM_REGIONS],
-                    # Deliberately a wildcard: application profile ARNs get a new generated ID whenever
-                    # a profile is replaced (e.g. on a model bump). Referencing the profiles stack
-                    # directly creates a CloudFormation export that blocks that replacement.
-                    f"arn:aws:bedrock:{self.region}:{self.account}:application-inference-profile/*",
+                    profile_arn,
                 ],
             )
         )
