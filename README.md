@@ -17,7 +17,7 @@ Workflows Catalogue (ci_ai_review.yml)
     ▼
 This Repo (checked out by workflow)
     ├── GitHub MCP Server (Docker container)
-    │       └── Fetches PR diff, posts review comments
+    │       └── Fetches PR diff, posts review comments (allowlisted tools only)
     └── Pydantic AI Agent (Bedrock Claude)
             └── Analyses code, generates review feedback
 ```
@@ -85,6 +85,11 @@ uninstalling it on a repo grants or revokes access.
 |------------|--------|
 | Contents | Read & Write |
 | Pull requests | Read & Write |
+
+The agent itself can only use four GitHub MCP tools (`pull_request_read`,
+`pull_request_review_write`, `get_file_contents`, `get_repository_tree`; see
+`GITHUB_TOOLS` in `src/ai_reviewer/github_server.py`), so it cannot push files or
+merge PRs. The App's own permissions are not yet narrowed to match.
 
 ### Installation
 
@@ -217,7 +222,7 @@ on its next run.
 
 - [Docker](https://www.docker.com/) running (for the GitHub MCP Server)
 - [uv](https://docs.astral.sh/uv/) for Python package management
-- AWS profile with Bedrock access (`bedrock-user-jose` or similar)
+- AWS profile with Bedrock `InvokeModel` access to your team's inference profile
 - A GitHub PAT with repo read access
 
 ### Running Locally
@@ -228,12 +233,22 @@ cd /path/to/gds-idea-ai-reviewer
 export GITHUB_TOKEN="ghp_your_pat_here"
 export PR_NUMBER=1
 export REPO="co-cddo/your-test-repo"
-export AWS_PROFILE="bedrock-user-jose"
+export AWS_PROFILE="<your-aws-profile>"
 export AWS_REGION="eu-west-2"
-export MODEL_ID="anthropic.claude-sonnet-5-5"
+export BEDROCK_INFERENCE_PROFILE_ARN="arn:aws:bedrock:eu-west-2:<account-id>:application-inference-profile/<profile-id>"
 
 uv run python -m ai_reviewer.run
 ```
+
+Bedrock rejects on-demand calls to the base model ID, so `BEDROCK_INFERENCE_PROFILE_ARN`
+is needed for local runs. Notes:
+
+- Find the ARN with
+  `aws bedrock list-inference-profiles --type-equals APPLICATION --region eu-west-2`, or read it
+  from SSM at `/ai-reviewer/inference-profiles/<team>`.
+- Use your own team's profile (`sds`, `econ` or `ds`) so cost is attributed to your team.
+- If the variable is set but empty (for example because an `aws ssm get-parameter` lookup
+  failed), the run exits with an error rather than falling back to the base model.
 
 The agent will:
 1. Start the GitHub MCP Server Docker container
