@@ -35,6 +35,12 @@ async def main() -> None:
     aws_profile = os.environ.get("AWS_PROFILE")  # For local testing only (not used in Actions)
     inference_profile_arn = os.environ.get("BEDROCK_INFERENCE_PROFILE_ARN")
 
+    # An empty value (e.g. from a failed `$(aws ssm get-parameter ...)`) would silently fall back to
+    # the base model ID, which will be a foundation model ID and get rejected.
+    if inference_profile_arn is not None and not inference_profile_arn.strip():
+        print("Error: BEDROCK_INFERENCE_PROFILE_ARN is set but empty (did the command that looks it up fail?)")
+        sys.exit(1)
+
     print(f"Starting AI review for {repo}#{pr_number}")
     print(f"Model: {model_id} | Region: {aws_region}")
     if aws_profile:
