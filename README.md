@@ -257,14 +257,20 @@ The IAM role infrastructure is defined in `cdk/`. To deploy:
 ```bash
 cd cdk/
 uv sync --group cdk
-uv run cdk deploy --profile aws-prototype
+uv run cdk deploy --all --profile aws-prototype
 # Enter MFA code when prompted
 ```
 
 This creates:
 - IAM role `ai-reviewer-role` in the DEV account (`992382722318`)
 - Trust policy for GitHub OIDC (scoped to `co-cddo` org)
-- Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5)
+- Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5 and the `ai-reviewer` application inference profile)
+- One application inference profile per team (`ai-reviewer`, `econ`, `sds`, `ds`), with each ARN published to SSM at `/ai-reviewer/inference-profiles/<team>`
+
+When the model changes, replacing the profiles gives them new ARNs. Look the current ARN
+up in SSM (or the stack outputs) rather than hardcoding it, and use `--all` so the profiles
+stack deploys before the IAM stack. If only a profile is replaced, add `--force` to the IAM
+stack deploy so it re-reads the SSM value.
 
 The CDK stack imports the existing GitHub OIDC provider (which already
 exists if CDK/Terraform workflows use OIDC in the same account).
