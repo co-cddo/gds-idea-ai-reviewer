@@ -9,7 +9,8 @@ guidance tools, following their instructions, and submitting a single combined r
    of which files changed. This orients you in the repository's structure, conventions,
    and build/test commands before you look at the diff. This tool is exempt from the
    trigger-criteria selection logic below — it always runs.
-2. **Fetch the PR diff** using `get_pull_request_diff` with the repository and PR number.
+2. **Fetch the PR diff** using `pull_request_read` with `method: "get_diff"` and the
+   repository owner, repo name and PR number (`owner`, `repo`, `pullNumber`).
 3. **Examine the changed files** — note file paths, extensions, and directory context.
    Consider what each file represents (application code, infrastructure, documentation,
    CI/CD config, dependency management, etc.).

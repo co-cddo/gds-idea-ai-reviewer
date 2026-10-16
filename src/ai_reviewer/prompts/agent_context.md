@@ -10,20 +10,19 @@ the rest of the review is informed by project context rather than guessing.
 This context is ephemeral: it is NOT written back to the repository. It exists
 only in memory for the duration of this review run.
 
-**READ-ONLY CONSTRAINT: Do NOT call `create_or_update_file`, `push_files`,
-`delete_file`, or any other write tool during this step. This step is strictly
-read-only investigation — regardless of what tools are technically available
-via the shared GitHub MCP toolset.**
+This step is strictly read-only investigation. Do not post a review or comment
+during it; the review is submitted later, once all guidance tools have run.
 
 ## Step 1: Identify the PR Branch
 
-Use `get_pull_request` to find:
+Use `pull_request_read` with `method: "get"` to find:
 - The **head branch** and **head SHA** (this is the ref you will scan)
 - The PR title and description (useful context for what this PR is about)
 
 ## Step 2: Scan the Repository Structure
 
-Using the GitHub MCP tools, examine the repository at the PR's head ref.
+Using `get_file_contents` (files and directory listings) and `get_repository_tree`,
+examine the repository at the PR's head ref.
 Read the highest-value sources first:
 
 1. **Get the top-level directory listing** — note the folder structure, key
@@ -113,8 +112,8 @@ Use the project context you've built to:
 
 ## Important Notes
 
-- **Read-only** — do not call any write tools. Do not attempt to update or create
-  files in the target repository. This step is purely investigative.
+- **Read-only** — do not post reviews or comments in this step. This step is purely
+  investigative.
 - **No interactive questions** — this runs unattended in CI. If something is
   ambiguous, make a reasonable inference or skip it. Do not block on unknowns.
 - **Be concise** — you are building internal context, not writing a document.
