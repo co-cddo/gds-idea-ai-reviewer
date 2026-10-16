@@ -5,6 +5,8 @@ import aws_cdk as cdk
 github_org = "co-cddo"
 role_name = "ai-reviewer-role"
 bedrock_model_id = "anthropic.claude-sonnet-5-5"
+# Team whose application inference profile the reviewer role may invoke.
+INVOKING_PROFILE_TEAM = "ai-reviewer"
 # eu.anthropic.claude-sonnet-5 profile can route to any of these regions,
 # so bedrock:InvokeModel on the foundation model must be granted
 # in all of them otherwise can cause a failure.
