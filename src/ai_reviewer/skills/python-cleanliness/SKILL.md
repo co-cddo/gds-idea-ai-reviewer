@@ -1,6 +1,6 @@
 ---
 name: python-cleanliness
-description: Review general Python code cleanliness: function design, naming and constants, layering, error handling, and code structure, independent of any specific framework. Use when writing or reviewing Python code for readability and maintainability.
+description: "Review general Python code cleanliness: function design, naming and constants, layering, error handling, and code structure, independent of any specific framework. Use when writing or reviewing Python code for readability and maintainability."
 metadata:
   ai_reviewer_tool: python_cleanliness_guidance
 ---
