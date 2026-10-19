@@ -83,24 +83,36 @@ uninstalling it on a repo grants or revokes access.
 
 | Permission | Access |
 |------------|--------|
-| Contents | Read & Write |
+| Contents | Read |
 | Pull requests | Read & Write |
 
-The agent itself can only use four GitHub MCP tools (`pull_request_read`,
-`pull_request_review_write`, `get_file_contents`, `get_repository_tree`; see
-`GITHUB_TOOLS` in `src/ai_reviewer/github_server.py`), so it cannot push files or
-merge PRs. The App's own permissions are not yet narrowed to match.
+The workflow requests exactly these two permissions when it mints the token, and scopes the
+token to the repo being reviewed. The agent itself can only use four GitHub MCP tools
+(`pull_request_read`, `pull_request_review_write`, `get_file_contents`, `get_repository_tree`;
+see `GITHUB_TOOLS` in `src/ai_reviewer/github_server.py`), so it cannot push files or merge PRs.
 
 ### Installation
 
-The app must be installed on:
-
-- **This repo** (`co-cddo/gds-idea-ai-reviewer`) — so the workflow can check out
-  the reviewer code
-- **Each consuming repo** — so the reviewer can read PR diffs and post reviews
+The app must be installed on **each consuming repo**, so the reviewer can read PR diffs
+and post reviews. It does not need to be installed on this repo: the workflow checks out
+the reviewer code (public) with the default `github.token`.
 
 To manage installations:
 https://github.com/organizations/co-cddo/settings/installations
+
+### Using the reviewer from another organisation
+
+Each organisation needs its own GitHub App and secrets (a private App can only be installed
+on its owner's account, and org secrets are not shared across orgs):
+
+1. Register a GitHub App in the org with **Contents: Read** and **Pull requests: Read & Write**,
+   and install it on the repos that will use the reviewer.
+2. Set the org secrets `GDS_IDEA_AI_REVIEWER_APP_ID` and `GDS_IDEA_AI_REVIEWER_APP_PRIVATE_KEY`
+   (see below), restricted to the repos that use the reviewer.
+3. Add the org to `github_orgs` in `cdk/config.py` and redeploy the IAM stack, so the
+   `ai-reviewer-role` trust policy accepts its OIDC tokens (currently `co-cddo` and `gds-dtx`).
+4. Call the catalogue workflow as described above. The org must be able to use the catalogue
+   repo's reusable workflows (public repo, or same enterprise with Actions access enabled).
 
 ### Org Secrets
 
@@ -263,7 +275,7 @@ The agent will:
 The action needs an IAM role (`ai-reviewer-role`) that:
 - Is trusted by GitHub Actions OIDC (`token.actions.githubusercontent.com`)
 - Has `bedrock:InvokeModel` permission on the configured model
-- Is scoped to `repo:co-cddo/*:*` (any repo in the org)
+- Is scoped to `repo:<org>/*:*` for each org in `github_orgs` in `cdk/config.py` (any repo in `co-cddo` and `gds-dtx`)
 
 ### Deploying with CDK
 
@@ -278,7 +290,7 @@ uv run cdk deploy --all --profile aws-prototype
 
 This creates:
 - IAM role `ai-reviewer-role` in the DEV account (`992382722318`)
-- Trust policy for GitHub OIDC (scoped to `co-cddo` org)
+- Trust policy for GitHub OIDC (scoped to the orgs in `github_orgs`: `co-cddo`, `gds-dtx`)
 - Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5 and the `ai-reviewer` application inference profile)
 - One application inference profile per team (`ai-reviewer`, `econ`, `sds`, `ds`), with each ARN published to SSM at `/ai-reviewer/inference-profiles/<team>`
 
