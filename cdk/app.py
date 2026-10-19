@@ -29,7 +29,7 @@ iam_stack = AIReviewerIAMStack(
     app,
     f"ai-reviewer-iam-{phase}",
     env=cdk_env,
-    github_org=config.github_org,
+    github_orgs=config.github_orgs,
     role_name=config.role_name,
     bedrock_model_id=config.bedrock_model_id,
 )
