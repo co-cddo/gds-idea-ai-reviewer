@@ -19,7 +19,7 @@ class AIReviewerIAMStack(cdk.Stack):
     """Stack that creates the IAM role for the AI reviewer GitHub Action.
 
     Args:
-        github_org: GitHub organisation to trust (e.g. 'co-cddo').
+        github_orgs: GitHub organisations to trust (e.g. ['co-cddo', 'gds-dtx']).
         role_name: Name for the IAM role.
         bedrock_model_id: Bedrock model ID to grant InvokeModel access for.
     """
@@ -29,7 +29,7 @@ class AIReviewerIAMStack(cdk.Stack):
         scope: Construct,
         construct_id: str,
         *,
-        github_org: str,
+        github_orgs: list[str],
         role_name: str,
         bedrock_model_id: str,
         **kwargs,
@@ -60,8 +60,9 @@ class AIReviewerIAMStack(cdk.Stack):
                     "StringLike": {
                         # GitHub's ID-qualified subjects add "@<id>" after the org and repo names.
                         "token.actions.githubusercontent.com:sub": [
-                            f"repo:{github_org}/*:*",
-                            f"repo:{github_org}@*/*:*",
+                            subject
+                            for org in github_orgs
+                            for subject in (f"repo:{org}/*:*", f"repo:{org}@*/*:*")
                         ],
                     },
                     "StringEquals": {
