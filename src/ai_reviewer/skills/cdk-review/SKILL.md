@@ -1,6 +1,6 @@
 ---
 name: cdk-review
-description: Review AWS CDK infrastructure code (stacks, IAM, config, Lambda handlers) against gds-idea conventions: typed config objects, stack structure, directory layout, naming, tagging, and removal policy. Use when writing or reviewing AWS CDK apps, stacks, or constructs in Python.
+description: Review AWS CDK infrastructure code (stacks, IAM, config, Lambda handlers) against gds-idea conventions such as typed config objects, stack structure, directory layout, naming, tagging, and removal policy. Use when writing or reviewing AWS CDK apps, stacks, or constructs in Python.
 metadata:
   ai_reviewer_tool: cdk_review_guidance
 ---

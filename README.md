@@ -17,7 +17,7 @@ Workflows Catalogue (ci_ai_review.yml)
     ▼
 This Repo (checked out by workflow)
     ├── GitHub MCP Server (Docker container)
-    │       └── Fetches PR diff, posts review comments
+    │       └── Fetches PR diff, posts review comments (allowlisted tools only)
     └── Pydantic AI Agent (Bedrock Claude)
             └── Analyses code, generates review feedback
 ```
@@ -83,19 +83,36 @@ uninstalling it on a repo grants or revokes access.
 
 | Permission | Access |
 |------------|--------|
-| Contents | Read & Write |
+| Contents | Read |
 | Pull requests | Read & Write |
+
+The workflow requests exactly these two permissions when it mints the token, and scopes the
+token to the repo being reviewed. The agent itself can only use four GitHub MCP tools
+(`pull_request_read`, `pull_request_review_write`, `get_file_contents`, `get_repository_tree`;
+see `GITHUB_TOOLS` in `src/ai_reviewer/github_server.py`), so it cannot push files or merge PRs.
 
 ### Installation
 
-The app must be installed on:
-
-- **This repo** (`co-cddo/gds-idea-ai-reviewer`) — so the workflow can check out
-  the reviewer code
-- **Each consuming repo** — so the reviewer can read PR diffs and post reviews
+The app must be installed on **each consuming repo**, so the reviewer can read PR diffs
+and post reviews. It does not need to be installed on this repo: the workflow checks out
+the reviewer code (public) with the default `github.token`.
 
 To manage installations:
 https://github.com/organizations/co-cddo/settings/installations
+
+### Using the reviewer from another organisation
+
+Each organisation needs its own GitHub App and secrets (a private App can only be installed
+on its owner's account, and org secrets are not shared across orgs):
+
+1. Register a GitHub App in the org with **Contents: Read** and **Pull requests: Read & Write**,
+   and install it on the repos that will use the reviewer.
+2. Set the org secrets `GDS_IDEA_AI_REVIEWER_APP_ID` and `GDS_IDEA_AI_REVIEWER_APP_PRIVATE_KEY`
+   (see below), restricted to the repos that use the reviewer.
+3. Add the org to `github_orgs` in `cdk/config.py` and redeploy the IAM stack, so the
+   `ai-reviewer-role` trust policy accepts its OIDC tokens (currently `co-cddo` and `gds-dtx`).
+4. Call the catalogue workflow as described above. The org must be able to use the catalogue
+   repo's reusable workflows (public repo, or same enterprise with Actions access enabled).
 
 ### Org Secrets
 
@@ -217,7 +234,7 @@ on its next run.
 
 - [Docker](https://www.docker.com/) running (for the GitHub MCP Server)
 - [uv](https://docs.astral.sh/uv/) for Python package management
-- AWS profile with Bedrock access (`bedrock-user-jose` or similar)
+- AWS profile with Bedrock `InvokeModel` access to your team's inference profile
 - A GitHub PAT with repo read access
 
 ### Running Locally
@@ -228,12 +245,22 @@ cd /path/to/gds-idea-ai-reviewer
 export GITHUB_TOKEN="ghp_your_pat_here"
 export PR_NUMBER=1
 export REPO="co-cddo/your-test-repo"
-export AWS_PROFILE="bedrock-user-jose"
+export AWS_PROFILE="<your-aws-profile>"
 export AWS_REGION="eu-west-2"
-export MODEL_ID="anthropic.claude-sonnet-5-5"
+export BEDROCK_INFERENCE_PROFILE_ARN="arn:aws:bedrock:eu-west-2:<account-id>:application-inference-profile/<profile-id>"
 
 uv run python -m ai_reviewer.run
 ```
+
+Bedrock rejects on-demand calls to the base model ID, so `BEDROCK_INFERENCE_PROFILE_ARN`
+is needed for local runs. Notes:
+
+- Find the ARN with
+  `aws bedrock list-inference-profiles --type-equals APPLICATION --region eu-west-2`, or read it
+  from SSM at `/ai-reviewer/inference-profiles/<team>`.
+- Use your own team's profile (`sds`, `econ` or `ds`) so cost is attributed to your team.
+- If the variable is set but empty (for example because an `aws ssm get-parameter` lookup
+  failed), the run exits with an error rather than falling back to the base model.
 
 The agent will:
 1. Start the GitHub MCP Server Docker container
@@ -248,7 +275,7 @@ The agent will:
 The action needs an IAM role (`ai-reviewer-role`) that:
 - Is trusted by GitHub Actions OIDC (`token.actions.githubusercontent.com`)
 - Has `bedrock:InvokeModel` permission on the configured model
-- Is scoped to `repo:co-cddo/*:*` (any repo in the org)
+- Is scoped to `repo:<org>/*:*` for each org in `github_orgs` in `cdk/config.py` (any repo in `co-cddo` and `gds-dtx`)
 
 ### Deploying with CDK
 
@@ -257,14 +284,20 @@ The IAM role infrastructure is defined in `cdk/`. To deploy:
 ```bash
 cd cdk/
 uv sync --group cdk
-uv run cdk deploy --profile aws-prototype
+uv run cdk deploy --all --profile aws-prototype
 # Enter MFA code when prompted
 ```
 
 This creates:
 - IAM role `ai-reviewer-role` in the DEV account (`992382722318`)
-- Trust policy for GitHub OIDC (scoped to `co-cddo` org)
-- Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5)
+- Trust policy for GitHub OIDC (scoped to the orgs in `github_orgs`: `co-cddo`, `gds-dtx`)
+- Bedrock InvokeModel permission (scoped to Claude Sonnet 5.5 and the `ai-reviewer` application inference profile)
+- One application inference profile per team (`ai-reviewer`, `econ`, `sds`, `ds`), with each ARN published to SSM at `/ai-reviewer/inference-profiles/<team>`
+
+When the model changes, replacing the profiles gives them new ARNs. Look the current ARN
+up in SSM (or the stack outputs) rather than hardcoding it, and use `--all` so the profiles
+stack deploys before the IAM stack. If only a profile is replaced, add `--force` to the IAM
+stack deploy so it re-reads the SSM value.
 
 The CDK stack imports the existing GitHub OIDC provider (which already
 exists if CDK/Terraform workflows use OIDC in the same account).
