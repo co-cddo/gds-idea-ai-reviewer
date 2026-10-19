@@ -91,3 +91,16 @@ def test_iam_policy_references_the_ssm_parameter_for_the_profile(iam):
 
 def test_iam_stack_depends_on_profiles_stack(cdk_app):
     assert cdk_app["inference_profiles_stack"] in cdk_app["iam_stack"].dependencies
+
+
+def test_role_trusts_exactly_the_configured_github_orgs(iam):
+    _, template = iam
+    (role,) = [r for r in template["Resources"].values() if r["Type"] == "AWS::IAM::Role"]
+    (statement,) = role["Properties"]["AssumeRolePolicyDocument"]["Statement"]
+    subjects = statement["Condition"]["StringLike"]["token.actions.githubusercontent.com:sub"]
+    assert sorted(subjects) == [
+        "repo:co-cddo/*:*",
+        "repo:co-cddo@*/*:*",
+        "repo:gds-dtx/*:*",
+        "repo:gds-dtx@*/*:*",
+    ]
