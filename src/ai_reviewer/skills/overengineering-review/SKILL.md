@@ -33,6 +33,14 @@ If the answer to 1 or 2 is "no", or the answer to 3 is "yes", it is a
 candidate. Code written for a future need that does not exist yet should be
 added when that need arrives.
 
+**Exception — a stated reason.** Do not flag code that is ahead of its callers
+if the developer has said why it is needed now, in the PR description or a
+code comment. For example, a `Protocol` with one implementation is fine when
+the PR says "a second backend lands next sprint and callers must not change".
+The reason must be specific (a known second use, a linked issue, an external
+constraint). "For flexibility" or "in case we need it" is not a reason. Where
+a reason is given but vague, raise a Suggestion asking for the concrete need.
+
 ## 1. Speculative Generality
 
 Abstractions are worth their cost once there is more than one real use. Before
@@ -61,6 +69,41 @@ def write_report(report: Report) -> None:
 The same applies to `Protocol` classes, registries, plugin systems and
 factories that hold a single entry.
 
+**Good — a stated, specific reason for the interface:**
+```python
+# PR description: "S3 writer arrives in #52; the Protocol lets the CLI stay unchanged."
+class ReportWriter(Protocol):
+    def write(self, report: Report) -> None: ...
+```
+
+### An enum with one member
+
+An enum earns its place by naming a set of alternatives that code branches on
+or validates against. One member, with nothing to choose between, is not a set.
+
+**Bad:**
+```python
+class OutputFormat(str, Enum):
+    CSV = "csv"
+
+
+def export(report: Report, fmt: OutputFormat = OutputFormat.CSV) -> None:
+    if fmt == OutputFormat.CSV:
+        report.to_frame().to_csv("report.csv")
+```
+
+**Good:**
+```python
+def export_csv(report: Report) -> None:
+    report.to_frame().to_csv("report.csv")
+```
+
+Add the enum when a second format exists.
+
+**Do not flag:** a single-member enum that mirrors a closed set defined by an
+external system (for example an API with one documented status), or one the PR
+says will grow.
+
 ### Unused parameters, options and flags
 
 **Bad — nothing passes `region` or `fmt` except the defaults:**
@@ -83,29 +126,29 @@ an option nobody has tested.
 Strategy, Builder, Command and dependency-injection containers are heavy for
 what is often a function call.
 
-**Bad — builder for three fields:**
+**Bad — builder for two fields:**
 ```python
-class QueryBuilder:
+class EmailBuilder:
     def __init__(self) -> None:
-        self._table = ""
-        self._limit = 100
+        self._to = ""
+        self._subject = ""
 
-    def table(self, name: str) -> "QueryBuilder":
-        self._table = name
+    def to(self, address: str) -> "EmailBuilder":
+        self._to = address
         return self
 
-    def limit(self, n: int) -> "QueryBuilder":
-        self._limit = n
+    def subject(self, text: str) -> "EmailBuilder":
+        self._subject = text
         return self
 
-    def build(self) -> str:
-        return f"SELECT * FROM {self._table} LIMIT {self._limit}"
+    def build(self) -> Email:
+        return Email(to=self._to, subject=self._subject)
 ```
 
 **Good:**
 ```python
-def build_query(table: str, limit: int = 100) -> str:
-    return f"SELECT * FROM {table} LIMIT {limit}"
+def build_email(to: str, subject: str) -> Email:
+    return Email(to=to, subject=subject)
 ```
 
 ### Pass-through wrappers
@@ -380,6 +423,7 @@ behind the change.
   implementation
 - Parameters, flags, `**kwargs` or config options no caller uses
 - Builder, Strategy or Command patterns around a trivial operation
+- An enum with a single member and no external closed set behind it
 - Wrappers that only forward to another function
 - Changes beyond the PR's stated purpose (features, refactors, new layers)
 - `isinstance`, `None` or emptiness checks that the type hints already rule out
@@ -401,8 +445,10 @@ behind the change.
   codebase
 - Validation and error handling at genuine trust boundaries (user input,
   external APIs, environment variables, files)
-- Complexity that the PR description or a code comment explains. Raise at most a
-  **Suggestion** and leave the final decision to a human
+- Code ahead of its callers (a one-implementation `Protocol`, an unused hook) where the PR description or a code comment gives a specific reason it is needed now. A vague reason ("for flexibility") does not
+  count: raise a **Suggestion** flagging whether there's a concrete need.
+- Other complexity that the PR description or a code comment explains. Raise at
+  most a **Suggestion** and leave the final decision to a human
 - Code a framework requires, such as Dash callback signatures, Pydantic models,
   CDK constructs, or an `async` handler the framework awaits
 - A wrapper that adds real behaviour or isolates a third-party API
