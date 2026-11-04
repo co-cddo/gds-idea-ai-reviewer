@@ -9,7 +9,8 @@ def _discovered_tool_names() -> set[str]:
 def test_get_all_toolsets_discovers_tools():
     """Auto-discovery finds agent_context, cdk_review_guidance,
     dash_app_review_guidance, docstring_review_guidance,
-    python_cleanliness_guidance, and readme_review_guidance.
+    overengineering_review_guidance, python_cleanliness_guidance, and
+    readme_review_guidance.
 
     code_review and docs_review are intentionally excluded (underscore-prefixed
     legacy modules) and should NOT be counted here.
