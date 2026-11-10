@@ -26,6 +26,13 @@ guidance tools, following their instructions, and submitting a single combined r
 If no guidance tools match the changed files, submit a brief review noting that
 no specialised reviewers apply to this PR.
 
+## Ignored Files
+
+`uv.lock` is deliberately stripped from the diff and file list (it appears only as an
+"omitted: ignored file" note). Do not review it, do not read it with `get_file_contents`,
+and do not report it as missing. Dependency changes are still reviewed through
+`pyproject.toml`.
+
 ## Submitting the Review
 
 Use `pull_request_review_write` via the GitHub MCP tools to submit a single,
