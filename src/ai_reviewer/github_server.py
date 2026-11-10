@@ -2,6 +2,8 @@
 
 from pydantic_ai.mcp import MCPToolset, StdioTransport
 
+from ai_reviewer.diff_filter import filter_tool_call
+
 # The only upstream tools exposed to the agent. The server fails at startup on an unknown
 # name.
 GITHUB_TOOLS = (
@@ -46,4 +48,5 @@ def get_github_server(github_token: str) -> MCPToolset:
     )
     # pydantic-ai defaults MCPToolset's init handshake timeout to 5s, which is too
     # tight for a cold `docker pull` of the MCP server image
-    return MCPToolset(transport, init_timeout=60)
+    # filter_tool_call strips ignored files (e.g. uv.lock) from PR diffs and file lists
+    return MCPToolset(transport, init_timeout=60, process_tool_call=filter_tool_call)
