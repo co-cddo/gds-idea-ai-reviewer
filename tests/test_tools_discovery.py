@@ -35,6 +35,15 @@ def test_retired_tools_are_excluded():
         assert excluded not in names
 
 
+def test_guidance_tools_render_a_whole_repo_target_without_pr_number():
+    """Omitting pr_number (whole-repo scans) swaps the PR target line for a scan one."""
+    for ts in get_all_toolsets():
+        for name, tool in ts.tools.items():
+            rendered = tool.function(None, repository="co-cddo/example")
+            assert rendered.startswith("Target: co-cddo/example (whole-repo scan)"), name
+            assert "PR #" not in rendered.splitlines()[0], name
+
+
 def test_every_guidance_tool_renders_its_prompt_template():
     """Every discovered guidance tool's prompt template must render cleanly.
 
