@@ -36,7 +36,7 @@ Read the highest-value sources first:
    - `.github/workflows/` — CI pipeline structure, what gets tested/linted
    - `docker-compose.yml`, `Dockerfile` — containerisation approach
    - `tsconfig.json`, `ruff.toml`, `.eslintrc.*` — linter/formatter config
-   - Lockfiles (`uv.lock`, `package-lock.json`, `Cargo.lock`) — dependency snapshot
+
 
 3. **Check for existing agent instructions**:
    - `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursorrules`,
