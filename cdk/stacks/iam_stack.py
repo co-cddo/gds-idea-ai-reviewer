@@ -60,9 +60,7 @@ class AIReviewerIAMStack(cdk.Stack):
                     "StringLike": {
                         # GitHub's ID-qualified subjects add "@<id>" after the org and repo names.
                         "token.actions.githubusercontent.com:sub": [
-                            subject
-                            for org in github_orgs
-                            for subject in (f"repo:{org}/*:*", f"repo:{org}@*/*:*")
+                            subject for org in github_orgs for subject in (f"repo:{org}/*:*", f"repo:{org}@*/*:*")
                         ],
                     },
                     "StringEquals": {
