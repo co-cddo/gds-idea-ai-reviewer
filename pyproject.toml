@@ -37,6 +37,7 @@ source = "vcs"
 [[tool.uv.index]]
 name = "gds-idea"
 url = "https://co-cddo.github.io/gds-idea-pypi/simple/"
+explicit = true
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/ai_reviewer/_version.py"
