@@ -1,5 +1,7 @@
 """GitHub MCP Server configuration for the AI reviewer agent."""
 
+from collections.abc import Sequence
+
 from pydantic_ai.mcp import MCPToolset, StdioTransport
 
 from ai_reviewer.diff_filter import filter_tool_call
@@ -14,17 +16,19 @@ GITHUB_TOOLS = (
 )
 
 
-def get_github_server(github_token: str) -> MCPToolset:
+def get_github_server(github_token: str, tools: Sequence[str] = GITHUB_TOOLS) -> MCPToolset:
     """
     Create and return a configured GitHub MCP server toolset.
 
     Uses the official GitHub MCP Server Docker image to provide
-    GitHub API access via MCP tools. Only the tools in ``GITHUB_TOOLS``
-    (read PRs and files, post a review) are exposed; write tools such as
+    GitHub API access via MCP tools. Only the tools in ``tools`` (by default
+    ``GITHUB_TOOLS``: read PRs and files, post a review) are exposed; write tools such as
     ``create_or_update_file`` or ``merge_pull_request`` are not registered.
 
     Args:
         github_token: GitHub token (PAT or GITHUB_TOKEN from Actions).
+        tools: Names of the upstream GitHub MCP tools to expose. Pass a read-only subset
+            for runs that must not post anything.
 
     Returns:
         Configured MCPToolset instance using the GitHub MCP server via stdio.
@@ -43,7 +47,7 @@ def get_github_server(github_token: str) -> MCPToolset:
         ],
         env={
             "GITHUB_PERSONAL_ACCESS_TOKEN": github_token,
-            "GITHUB_TOOLS": ",".join(GITHUB_TOOLS),
+            "GITHUB_TOOLS": ",".join(tools),
         },
     )
     # pydantic-ai defaults MCPToolset's init handshake timeout to 5s, which is too

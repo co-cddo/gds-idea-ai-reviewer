@@ -1,0 +1,6 @@
+# Copy this file to repos.txt (git-ignored) and list the repos to scan, one per line.
+# A bare name means co-cddo/<name>; repos in other orgs are written in full.
+# Duplicates are ignored. '#' starts a comment.
+repo-a
+co-cddo/repo-b
+gds-dtx/repo-c
