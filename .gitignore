@@ -53,3 +53,4 @@ cdk.context.json
 
 # Tech debt scan outputs
 scripts/techdebt/outputs/
+scripts/techdebt/repos.txt

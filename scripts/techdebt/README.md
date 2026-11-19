@@ -40,14 +40,13 @@ Then read `scripts/techdebt/outputs/repos/*.md` and `report.md`.
 
 ## Full run
 
-Put one repo per line in a file. Bare names mean `co-cddo`, and `#` starts a comment:
+Copy the example list and edit it. `repos.txt` is git-ignored, so your list stays local:
 
+```sh
+cp scripts/techdebt/repos.example.txt scripts/techdebt/repos.txt
 ```
-# repos.txt
-repo-a
-repo-b
-gds-dtx/repo-c
-```
+
+Put one repo per line. Bare names mean `co-cddo`, other orgs are written in full (`gds-dtx/repo-c`), and `#` starts a comment.
 
 ```sh
 uv run python scripts/techdebt/techdebt_scan.py --repos-file scripts/techdebt/repos.txt
