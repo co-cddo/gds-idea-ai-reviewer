@@ -44,10 +44,11 @@ def make_review_tool(
     """
     ts = FunctionToolset()
 
-    def guidance(ctx: RunContext, repository: str, pr_number: int) -> str:
+    def guidance(ctx: RunContext, repository: str, pr_number: int | None = None) -> str:
         resource = files(package).joinpath(*prompt_file.split("/"))
         body = _strip_frontmatter(resource.read_text())
-        return f"Target: {repository} / PR #{pr_number}\n\n{body}"
+        target = f"{repository} (whole-repo scan)" if pr_number is None else f"{repository} / PR #{pr_number}"
+        return f"Target: {target}\n\n{body}"
 
     # # Set the function's identity so Pydantic AI uses the correct tool name
     # and description in the schema it sends to the LLM based on defined values. Otherwise every function

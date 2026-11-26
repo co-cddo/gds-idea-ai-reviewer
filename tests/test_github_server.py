@@ -33,6 +33,12 @@ def test_allowlist_is_passed_to_server():
     assert transport.env["GITHUB_TOOLS"].split(",") == list(GITHUB_TOOLS)
 
 
+def test_custom_tools_replace_the_default_allowlist():
+    transport = get_github_server("dummy-token", tools=("get_file_contents", "get_repository_tree")).client.transport
+
+    assert transport.env["GITHUB_TOOLS"] == "get_file_contents,get_repository_tree"
+
+
 def test_token_is_still_passed_to_server():
     transport = _transport()
 
